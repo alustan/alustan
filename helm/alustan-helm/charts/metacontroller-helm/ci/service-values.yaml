@@ -1,0 +1,69 @@
+rbac:
+  create: true
+
+image:
+  repository: localhost/metacontroller
+  pullPolicy: IfNotPresent
+  tag: "dev"
+
+imagePullSecrets: []
+nameOverride: "metacontroller"
+namespaceOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+
+securityContext: {}
+
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+command: "/usr/bin/metacontroller"
+
+
+commandArgs:
+  - --zap-log-level=4
+  - --discovery-interval=20s
+  - --cache-flush-interval=30m
+
+
+priorityClassName: ""
+
+clusterRole:
+  aggregationRule: {}
+  rules:
+  - apiGroups:
+      - "*"
+    resources:
+      - "*"
+    verbs:
+      - "*"
+
+replicas: 1
+
+
+podDisruptionBudget: {}
+
+
+service:
+  enabled: true
+  ports:
+    - name: "metrics"
+      port: 9999
+      protocol: "TCP"
+      targetPort: 9999

@@ -1,0 +1,30 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: terraform-manager
+rules:
+- apiGroups: ["alustan.io"]
+  resources: ["terraforms"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["alustan.io"]
+  resources: ["terraforms/status"]
+  verbs: ["get", "update"]
+- apiGroups: [""]
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"] 
+  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,37 @@
+name: Release helm chart
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger the workflow on version tags
+
+jobs:
+  release-helm:
+    name: Release helm chart
+    permissions:
+      contents: write
+    env:
+      HELM_EXPERIMENTAL_OCI: 1
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+        with:
+          fetch-depth: 0
+
+      - name: Install Helm
+        uses: Azure/setup-helm@v4
+        with:
+          version: 3.8.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Save and publish Helm chart to Docker registry
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm package --version $VERSION ./helm/alustan-helm/
+          helm push alustan-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan

@@ -1,0 +1,21 @@
+---
+apiVersion: metacontroller.k8s.io/v1alpha1
+kind: CompositeController
+metadata:
+  name: terraform
+spec:
+  generateSelector: true
+  parentResource:
+    apiVersion: alustan.io/v1alpha1
+    resource: terraforms
+
+  hooks:
+    sync:
+      webhook:
+        url: http://terraform-controller-helm.alustan.svc.cluster.local:8080/sync
+    finalize:
+      webhook:
+        url: http://terraform-controller-helm.alustan.svc.cluster.local:8080/sync
+
+
+

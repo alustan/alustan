@@ -1,0 +1,63 @@
+rbac:
+  create: true
+
+image:
+  repository: localhost/metacontroller
+  pullPolicy: IfNotPresent
+  tag: "dev"
+
+imagePullSecrets: []
+nameOverride: ""
+namespaceOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+ 
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+
+securityContext: {}
+
+
+resources: {}
+
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+command: "/usr/bin/metacontroller"
+
+
+commandArgs:
+  - --zap-log-level=4
+  - --discovery-interval=20s
+  - --cache-flush-interval=30m
+
+
+priorityClassName: ""
+
+clusterRole:
+  aggregationRule:
+    clusterRoleSelectors:
+      - matchLabels:
+          rbac.authorization.k8s.io/aggregate-to-admin: "true"
+      - matchLabels:
+          rbac.authorization.k8s.io/aggregate-to-edit: "true"
+      - matchLabels:
+          rbac.authorization.k8s.io/aggregate-to-view: "true"
+  rules: []
+
+replicas: 1
+
+
+podDisruptionBudget: {}
+
