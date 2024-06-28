@@ -1,0 +1,23 @@
+---
+apiVersion: metacontroller.k8s.io/v1alpha1
+kind: CompositeController
+metadata:
+  name: application
+spec:
+  generateSelector: true
+  parentResource:
+    apiVersion: alustan.io/v1alpha1
+    resource: applications
+  childResources:
+  - apiVersion: argoproj.io/v1alpha1
+    resource: applicationsets
+    updateStrategy:
+      method: InPlace
+  hooks:
+    sync:
+      webhook:
+        url: http://app-controller-helm.metacontroller.svc.cluster.local:8081/sync
+    
+   
+
+

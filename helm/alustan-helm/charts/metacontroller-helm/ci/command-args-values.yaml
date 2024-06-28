@@ -1,0 +1,72 @@
+rbac:
+  create: true
+
+image:
+  repository: localhost/metacontroller
+  pullPolicy: IfNotPresent
+  tag: "dev"
+
+imagePullSecrets: []
+nameOverride: ""
+namespaceOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+ 
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+
+securityContext: {}
+
+resources: {}
+ 
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+
+command: "/usr/bin/metacontroller"
+
+
+commandArgs:
+  - --zap-log-level=4
+  - --zap-devel=false
+  - --zap-encoder=json
+  - --zap-stacktrace-level=error
+  - --discovery-interval=1m
+  - --cache-flush-interval=10m
+  - --metrics-address=:9999
+  - --client-go-qps=150
+  - --client-go-burst=300
+  - --workers=50
+  - --events-qps=0.0033
+  - --events-burst=25
+  - --pprof-address=:6060
+
+
+priorityClassName: ""
+
+clusterRole:
+  aggregationRule: {}
+  rules:
+  - apiGroups:
+      - "*"
+    resources:
+      - "*"
+    verbs:
+      - "*"
+
+replicas: 1
+
+
+podDisruptionBudget: {}
+

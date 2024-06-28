@@ -1,0 +1,67 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: terraforms.alustan.io
+spec:
+  group: alustan.io
+  names:
+    plural: terraforms
+    singular: terraform
+    kind: Terraform
+    shortNames:
+      - tf
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                provider:
+                  type: string
+                variables:
+                  type: object
+                  additionalProperties: true
+                scripts:
+                  type: object
+                  properties:
+                    deploy:
+                      type: string
+                    destroy:
+                      type: string
+                gitRepo:
+                  type: object
+                  properties:
+                    url:
+                      type: string
+                    branch:
+                      type: string
+                containerRegistry:
+                  type: object
+                  properties:
+                    imageName:
+                      type: string
+            status:
+              type: object
+              properties:
+                state:
+                  type: string
+                message:
+                  type: string
+                output:
+                  type: object
+                cloudResources:
+                  type: object
+                ingressURLs:
+                  type: object
+                credentials:
+                  type: object
+                
+
+      subresources:
+        status: {}

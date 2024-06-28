@@ -1,0 +1,80 @@
+project_name: alustan
+
+env:
+  - GC_FLAGS={{ if index .Env "DEBUG" }}all=-N -l{{ else }}-c 1{{ end }}
+  - REMOVE_DEBUG_SYMBOLS={{ if index .Env "DEBUG" }}{{ else }}-s -w{{ end }}
+
+before:
+  hooks:
+    - make setup
+
+builds:
+  - binary: app-controller
+    main: ./cmd/app-controller/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -v
+    ldflags:
+      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser {{ .Env.REMOVE_DEBUG_SYMBOLS }}
+    gcflags:
+      - '{{ .Env.GC_FLAGS }}'
+    ignore:
+      - goos: linux
+        goarch: '386'
+
+  - binary: terraform-controller
+    main: ./cmd/terraform-controller/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -v
+    ldflags:
+      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser {{ .Env.REMOVE_DEBUG_SYMBOLS }}
+    gcflags:
+      - '{{ .Env.GC_FLAGS }}'
+    ignore:
+      - goos: linux
+        goarch: '386'
+
+archives:
+  - format: tar.gz
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+release:
+  mode: append
+  footer: |
+    ## Docker Image
+
+    - `docker.io/alustan/terraform-controller:v{{ .Version }}`
+
+    - `docker.io/alustan/app-controller:v{{ .Version }}`
+
+    ## Helm chart
+
+    - `oci://registry-1.docker.io/alustan/{{ .ProjectName }}-helm:{{ .Version }}`
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
