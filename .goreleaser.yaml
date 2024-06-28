@@ -9,7 +9,8 @@ before:
     - make setup
 
 builds:
-  - binary: app-controller
+  - id: app_controller_build
+    binary: app-controller
     main: ./cmd/app-controller/main.go
     env:
       - CGO_ENABLED=0
@@ -29,7 +30,8 @@ builds:
       - goos: linux
         goarch: '386'
 
-  - binary: terraform-controller
+  - id: terraform_controller_build
+    binary: terraform-controller
     main: ./cmd/terraform-controller/main.go
     env:
       - CGO_ENABLED=0
