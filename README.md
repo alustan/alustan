@@ -14,7 +14,7 @@
 
 > `terraform-controller` syncs directly with your terraform codebase every 6hrs  
 
-> `app-controller` scans your container registry every 10mins and uses the latest image that satifies the specified semantic tag constraint. 
+> `app-controller` scans your container registry every 10mins and uses the latest image that satisfies the specified semantic tag constraint. 
 
 > Argocd continously updates the crd manifests as always
 
@@ -39,7 +39,7 @@ base64 -w 0 secret.json
 helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --version <version>
 ```
 
-> **Requires argocd pre-installed in the cluster: needed for `app-controller`**
+> **Requires argocd pre-installed in the cluster: needed by `app-controller`**
 
 - **Define your manifest**
 
