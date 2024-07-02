@@ -35,6 +35,13 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^version:.*/version: ${VERSION}/" ./helm/alustan-helm/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" ./helm/alustan-helm/Chart.yaml
+          cat ./helm/alustan-helm/Chart.yaml  # For debugging purposes
+
+      - name: Update Chart.yaml version and appVersion
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version:.*/version: ${VERSION}/" ./helm/alustan-helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" ./helm/alustan-helm/Chart.yaml
 
       - name: Save and publish Helm chart to Docker registry
         run: |
