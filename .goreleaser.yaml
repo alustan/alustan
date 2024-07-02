@@ -47,7 +47,7 @@ release:
   footer: |
     ## Docker Image
 
-    - `docker.io/alustan/terraform-controller:v{{ .Version }}`
+    - `docker.io/alustan/terraform-controller:{{ .Version }}`
 
 
     ## Helm chart
