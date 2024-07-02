@@ -48,7 +48,7 @@ jobs:
             latest=false
           tags: |
             type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
-            type=raw,value=${{ github.ref_name }}
+            type=raw,value=${GITHUB_REF_NAME#v}
            
       - name: Docker Build and Push to Docker Hub
         uses: docker/build-push-action@v5
