@@ -30,16 +30,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Update Chart.yaml version and appVersion
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s/^version:.*/version: ${VERSION}/" ./helm/alustan-helm/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" ./helm/alustan-helm/Chart.yaml
-          cat ./helm/alustan-helm/Chart.yaml  # For debugging purposes
-
-
       - name: Save and publish Helm chart to Docker registry
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           helm package --version $VERSION ./helm/alustan-helm/
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" ./helm/alustan-helm/Chart.yaml
           helm push alustan-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan
