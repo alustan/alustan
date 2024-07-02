@@ -22,8 +22,7 @@ spec:
             spec:
               type: object
               properties:
-                provider:
-                  type: string
+               
                 variables:
                   type: object
                   additionalProperties: true
@@ -34,17 +33,22 @@ spec:
                       type: string
                     destroy:
                       type: string
-                gitRepo:
+                postDeploy:
                   type: object
                   properties:
-                    url:
+                    script:
                       type: string
-                    branch:
-                      type: string
+                    args:
+                      type: object
+                      additionalProperties: true
                 containerRegistry:
                   type: object
                   properties:
+                    provider:
+                      type: string
                     imageName:
+                      type: string
+                    semanticVersion:
                       type: string
             status:
               type: object
@@ -55,7 +59,7 @@ spec:
                   type: string
                 output:
                   type: object
-                cloudResources:
+                postDeployOutput:
                   type: object
                 ingressURLs:
                   type: object

@@ -10,7 +10,7 @@ import (
 )
 
 // GetDataFromSecret retrieves the SSH key from a Kubernetes Secret
-func GetDataFromSecret(clientset *kubernetes.Clientset, namespace, secretName, keyName string) (string, error) {
+func GetDataFromSecret(clientset  kubernetes.Interface, namespace, secretName, keyName string) (string, error) {
 	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		log.Printf("Failed to get secret '%s': %v", secretName, err)

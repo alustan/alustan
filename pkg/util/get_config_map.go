@@ -10,7 +10,7 @@ import (
 )
 
 // GetConfigMapContent retrieves the content of the ConfigMap based on its name and key.
-func GetConfigMapContent(clientset *kubernetes.Clientset, namespace, name, key string) (string, error) {
+func GetConfigMapContent(clientset  kubernetes.Interface, namespace, name, key string) (string, error) {
 	// Retrieve the ConfigMap
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 )
 
 // EnsurePVC ensures that the specified Persistent Volume Claim exists.
-func EnsurePVC(clientset *kubernetes.Clientset, namespace, pvcName string) error {
+func EnsurePVC(clientset  kubernetes.Interface, namespace, pvcName string) error {
     pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
     if err == nil && pvc != nil {
         log.Printf("PVC %s already exists in namespace %s", pvcName, namespace)

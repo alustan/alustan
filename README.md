@@ -1,37 +1,28 @@
 ## Introduction
 
-> **Kubernetes native platform orchestrator**
+> **Infrastructure continuous delivery platform**
 
 ## Design Goal
 
 - Simple workload specifications
 
-- Extensible via plugins
+- Intentionally unopionated, left the level of infra backend abstraction to infra team
 
-- Current Implementations works with `AWS`: can be extended via `plugins` to work with other Hyperscalers
+- Free to design what constitutes your deploy script instead of simply terraform plan and apply
 
-- Sync interval; for `terraform-controller: 6hrs`  while `app-controller: 10mins`
+- Ability to write postDeploy script that can perform any requested action and store the output in crd status field
 
-> `terraform-controller` syncs directly with your terraform codebase every 6hrs  
+- Intentionally outsourced the packaging of the IAC OCI image to accomodate for different cloud/onprem services. [base image sample](./examples/Dockerfile) 
 
-> `app-controller` scans your container registry every 10mins and uses the latest image that satisfies the specified semantic tag constraint. 
+-  Scans your container registry every 6hrs and uses the latest image that satisfies the specified semantic tag constraint.
 
-> Argocd continously updates the crd manifests as always
+> The default `sync interval` can be changed in the helm values file
+
+> If you are using a gitops delivery tool such as Argocd or fluxcd. It will continue to reconcile the crd manifests as always. However to avoid conflict with the controller `sync interval` the reconciliation is processed when a drift in crd is noted or if argocd/fluxcd is trying to sync a new crd manifest
+
+> **Note that the infrastructure drift detection and reconciliation is handled directly by the controller**
 
 ## setup
-
-- To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret `For docker registry`
-
-> Needed by `terraform-controller` to be able to push and pull image from registry
-
-```sh
-docker login -u alustan -p dckr_pat_**********************
-cat ~/.docker/config.json > secret.json
-
-base64 -w 0 secret.json
-```
-
-## Usage
 
 - install the helm chart into a kubernetes cluster
 
@@ -39,11 +30,29 @@ base64 -w 0 secret.json
 helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --version <version>
 ```
 
-> **Requires argocd pre-installed in the cluster: needed by `app-controller`**
+**To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
 
-- **Define your manifest**
+ - **If using `dockerhub` as OCI registry**
 
-##### infrastructure workload specification
+```sh
+rm ~/.docker/config.json
+docker login -u <YOUR_DOCKERHUB_USERNAME> -p <YOUR_DOCKERHUB_PAT>
+cat ~/.docker/config.json > secret.json
+base64 -w 0 secret.json 
+
+```
+
+- **If using `GHCR` as OCI registry**
+
+```sh
+rm ~/.docker/config.json
+docker login ghcr.io -u <YOUR_GITHUB_USERNAME> -p <YOUR_GITHUB_PAT>
+cat ~/.docker/config.json > secret.json
+base64 -w 0 secret.json 
+
+```
+
+- **Workload specification**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -51,23 +60,23 @@ kind: Terraform
 metadata:
   name: staging-cluster
   namespace: staging
-  label:
-   workspace: staging-cluster
-   region: us-west-2
 spec:
-  provider: aws
   variables:
     TF_VAR_provision_cluster: "true"
     TF_VAR_provision_db: "false"
     TF_VAR_vpc_cidr: "10.1.0.0/16"
   scripts:
     deploy: deploy
-    destroy: destroy -c
-  gitRepo:
-    url: https://github.com/alustan/infrastructure
-    branch: main
+    destroy: destroy -c # omit if you dont wish to destroy infrastructure when resource is being finalized
+  postDeploy:
+    script: aws-resource
+    args:
+      workspace: TF_VAR_workspace
+      region: TF_VAR_region
   containerRegistry:
-    imageName: docker.io/alustan/terraform-control # imagename to be built by the controller
+    provider: docker
+    imageName: alustan/terraform-control # image name to be pulled by the controller
+    semanticVersion: ">=1.0.0" # semantic constraint
  ###################################################################################   
 status:
   state: "Progressing"
@@ -93,7 +102,7 @@ status:
     "grafanaPassword": "exampleGrafanaPassword"
   }
 
-  cloudResources: {
+  postDeployOutput: {
     "resources": [
        {
             "Service": "EKS",
@@ -133,43 +142,104 @@ status:
 }
 ```
 
-##### application workload specification
+- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
 
 ```yaml
-apiVersion: alustan.io/v1alpha1
-kind: Application
-metadata:
-  name: web
-spec:
-  provider: aws
-  cluster: staging-cluster
-  environment: staging 
-  port: 80 
-  host: staging.example.com
-  strategy: default # canary, preview
-  git:
-    owner: alustan
-    repo: backstage-portal
-    branch: main
-  containerRegistry:
-    provider: docker
-    imageName: alustan/app-control # image name to be pulled by app-controller
-    semanticVersion: ">=1.0.0" # semantic constraint
-  config:
-    url: postgresql://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME
-    dburl: mysql://$DB_USER:$DB_PASSWORD@mysql:3306/$DB_NAME
- ###################################################################################  
-status:
-  healthStatus: Synced
-  message: Healthy
+variables:
+  TF_VAR_provision_cluster: "true"
+  TF_VAR_provision_db: "false"
+  TF_VAR_vpc_cidr: "10.1.0.0/16"
+
 ```
 
-**This is one of multiple projects that aims to setup a functional platform for seamless application delivery and deployment with less technical overhead**
+- This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
+
+> The `destroy` script should be `omitted` if when CRD is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
+
+**Sample [deploy](https://github/alustan/infrastructure/setup/cmd/deploy/main.go) and [destroy](https://github/alustan/infrastructure/setup/cmd/destroy/main.go) script in GO**
+
+```yaml
+scripts:
+  deploy: deploy
+  destroy: destroy -c
+
+```
+- `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
+
+> An example implementation was written a custom GO script [aws-resource]() (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
+
+> The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
+
+```yaml
+postDeploy:
+  script: aws-resource
+  args:
+    workspace: TF_VAR_workspace
+    region: TF_VAR_region
+
+``` 
+> **Output looks like this:** 
+
+```yaml
+postDeployOutput: {
+    "resources": [
+       {
+            "Service": "EKS",
+            "Resource": {
+                "ClusterName": "example-cluster",
+                "Status": "ACTIVE",
+                "Tags": {
+                    "Blueprint": "staging"
+                }
+            }
+        },
+      {
+          "Service": "RDS",
+          "Resource": {
+              "DBInstanceIdentifier": "example-db",
+              "DBInstanceClass": "db.t3.micro",
+              "DBInstanceStatus": "available",
+              "Tags": [
+                  {"Key": "Blueprint", "Value": "staging"}
+              ]
+          }
+      },
+        {
+          "Service": "ALB/NLB",
+          "Resource": {
+              "LoadBalancerName": "example-alb",
+              "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
+              "Type": "application",
+              "Scheme": "internet-facing",
+              "State": "active",
+              "Tags": [
+                  {"Key": "Blueprint", "Value": "staging"}
+              ]
+          }
+      }
+  ]
+}
+
+```
+
+- `status field` The Status field consists of the followings:
+
+> **`state`: Current state - `Progressing` `error` `Success` `Completed`**
+
+> **`message`: Detailed message regarding current state**
+
+> **`output`: Terraform Output**
+
+> **`ingressURLs`: Lists all urls associated with all of the ingress resource in the cluster**
+
+> **`credentials`: Retrieves `username` and `passwords` associated with some cluster addons; In this case it just attempts to retrieve `argocd` and `grafana` login creds if found in the cluster**
+
+> **`postDeployOutput`: Custom field to store output of your `postdeploy` script if specified**
 
 **Check Out:**
 
-1. [infrastructure](https://github.com/alustan/infrastructure) `Modular and extensible infrastructure setup`
+ https://github.com/alustan/infrastructure for infrastructure backend implementation
 
-2. [manifests](https://github.com/alustan/manifests) `Cluster manifests`
+**Alustan:** focuses on building tools and platforms that ensures right implementation of devops principles
 
-4. [backstage-portal](https://github.com/alustan/backstage-portal) `Backstage portal`
+
