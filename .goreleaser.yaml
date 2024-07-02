@@ -13,7 +13,7 @@ builds:
 
   - id: terraform_controller_build
     binary: terraform-controller
-    main: ./cmd/terraform-controller/main.go
+    main: ./cmd/controller/main.go
     env:
       - CGO_ENABLED=0
     goos:
