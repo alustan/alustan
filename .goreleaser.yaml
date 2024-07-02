@@ -9,26 +9,7 @@ before:
     - make setup
 
 builds:
-  - id: app_controller_build
-    binary: app-controller
-    main: ./cmd/app-controller/main.go
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    flags:
-      - -v
-    ldflags:
-      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser {{ .Env.REMOVE_DEBUG_SYMBOLS }}
-    gcflags:
-      - '{{ .Env.GC_FLAGS }}'
-    ignore:
-      - goos: linux
-        goarch: '386'
+ 
 
   - id: terraform_controller_build
     binary: terraform-controller
@@ -68,7 +49,6 @@ release:
 
     - `docker.io/alustan/terraform-controller:v{{ .Version }}`
 
-    - `docker.io/alustan/app-controller:v{{ .Version }}`
 
     ## Helm chart
 

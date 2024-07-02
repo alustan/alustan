@@ -1,0 +1,53 @@
+---
+
+apiVersion: alustan.io/v1alpha1
+kind: Terraform
+metadata:
+  name: staging-cluster
+  namespace: staging
+spec:
+  variables:
+    TF_VAR_workspace: "staging"
+    TF_VAR_region: "us-east-1"
+    TF_VAR_provision_cluster: "true"
+    TF_VAR_provision_db: "false"
+    TF_VAR_vpc_cidr: "10.0.0.0/16"
+  scripts:
+    deploy: deploy
+    destroy: destroy -c # omit if you dont wish to destroy infrastructure when resource is being finalized
+  postDeploy:
+    script: aws-resource
+    args:
+      workspace: TF_VAR_workspace
+      region: TF_VAR_region
+  containerRegistry:
+    provider: docker
+    imageName: alustan/terraform-control # image name to be pulled by the controller
+    semanticVersion: ">=1.0.0" # semantic constraint
+
+---
+
+apiVersion: alustan.io/v1alpha1
+kind: Terraform
+metadata:
+  name: dev-cluster
+  namespace: dev
+spec:
+  variables:
+    TF_VAR_workspace: "dev"
+    TF_VAR_region: "us-west-2"
+    TF_VAR_provision_cluster: "false"
+    TF_VAR_provision_db: "true"
+    TF_VAR_vpc_cidr: "10.1.0.0/16"
+  scripts:
+    deploy: deploy
+    destroy: destroy -d # omit if you dont wish to destroy infrastructure when resource is being finalized
+  postDeploy:
+    script: aws-resource
+    args:
+      workspace: TF_VAR_workspace
+      region: TF_VAR_region
+  containerRegistry:
+    provider: ghcr
+    imageName: alustan/terraform-control  # image name to be pulled by the controller
+    semanticVersion: ">=1.0.0" # semantic constraint

@@ -9,39 +9,26 @@ image:
     
     # Overrides the image tag whose default is the chart appVersion.
     tag: "v0.16.0"
-  app:
-    repository: alustan/app-controller
-  
-    # Overrides the image tag whose default is the chart appVersion.
-    tag: "v0.1.0"
+ 
 
 
 imagePullSecrets: []
 
 
-infraSyncInterval: ""
+syncInterval: ""
 
-appSyncInterval: ""
-
-gitOrg:
-  url: https://github.com/alustan
-  gitSSHSecret: "" # specify if using private git repo
-  githubToken: ""  # specify if using ghcr as container registry
-
-containerRegistry:
-  containerRegistrySecret: "" # required by terraform-controller to push and pull image from regstry
-  dockerToken: "" # specify if using docker as container registry
 
 
 
-# wish to Use Kubernetes Secrets
+containerRegistry:
+  containerRegistrySecret: ""  
+
+
+# wish to Use Kubernetes Secrets to store "containerRegistrySecret" "
 useSecrets: false
 containerRegistrySecretName: ""
 containerRegistrySecretKey: ""
-dockerToken: ""
-gitSecretName: ""
-gitSSHSecretKey: ""
-githubToken: ""
+
 
 
 serviceAccount:
@@ -64,9 +51,7 @@ service:
   type: ClusterIP
   infra:
     port:  8080 
-  app:
-    port:  8081
-
+ 
 
 
 autoscaling:

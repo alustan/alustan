@@ -37,15 +37,8 @@ spec:
           
           image: "{{ .Values.image.infra.repository }}:{{ .Values.image.infra.tag | default .Chart.AppVersion }}"
           env:
-            - name: INFRA_SYNC_INTERVAL
-              value: {{ .Values.infraSyncInterval }}
-            - name: APP_SYNC_INTERVAL
-              value: {{ .Values.appSyncInterval }}
-            - name: GIT_ORG_URL
-              value: {{ .Values.gitOrg.url }}
-            
-          
-           
+            - name: SYNC_INTERVAL
+              value: {{ .Values.syncInterval }}
            
           {{- if .Values.useSecrets }}
             - name: CONTAINER_REGISTRY_SECRET
@@ -53,38 +46,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.containerRegistrySecretName }}
                   key: {{ .Values.containerRegistrySecretKey }}
-            - name: DOCKER_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.containerRegistrySecretName }}
-                  key: {{ .Values.dockerToken }}
-            - name: GIT_SSH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.gitSecretName }}
-                  key: {{ .Values.gitSSHSecretKey }}
-            - name: GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.gitSecretName }}
-                  key: {{ .Values.githubToken }}
+           
             {{- else }}
            
             - name: CONTAINER_REGISTRY_SECRET
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
+         
            
-            {{- if .Values.gitOrg.gitSSHSecret }}
-            - name: GIT_SSH_SECRET
-              value: {{ .Values.gitOrg.gitSSHSecret }}
-            {{- end }}
-            {{- if .Values.gitOrg.githubToken }}
-            - name: GITHUB_TOKEN
-              value: {{ .Values.gitOrg.githubToken }}
-            {{- end }}
-            {{- if .Values.containerRegistry.dockerToken }}
-            - name: DOCKER_TOKEN
-              value: {{ .Values.containerRegistry.dockerToken }}
-            {{- end }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

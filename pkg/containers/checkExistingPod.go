@@ -9,7 +9,7 @@ import (
 
 
 // CheckExistinPods checks for any existing pods with the specified label.
-func CheckExistingPods(clientset *kubernetes.Clientset, namespace, labelSelector string) (bool, error) {
+func CheckExistingPods(clientset  kubernetes.Interface, namespace, labelSelector string) (bool, error) {
     pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
         LabelSelector: labelSelector,
     })
