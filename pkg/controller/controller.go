@@ -31,7 +31,7 @@ type Controller struct {
 	dynClient    dynclient.Interface
 	syncInterval time.Duration
 	lastSyncTime time.Time
-	cache        map[string]string // Cache to store CRD states
+	Cache        map[string]string // Cache to store CRD states
 	cacheMutex   sync.Mutex        // Mutex to protect cache access
 }
 
@@ -41,7 +41,7 @@ func NewController(clientset k8sclient.Interface, dynClient dynclient.Interface,
 		dynClient:    dynClient,
 		syncInterval: syncInterval,
 		lastSyncTime: time.Now().Add(-syncInterval), // Initialize to allow immediate first run
-		cache:        make(map[string]string),       // Initialize cache
+		Cache:        make(map[string]string),       // Initialize cache
 	}
 }
 
@@ -128,8 +128,8 @@ func (c *Controller) IsCRDChanged(observed schematypes.SyncRequest) bool {
 	c.cacheMutex.Lock()
 	defer c.cacheMutex.Unlock()
 
-	newHash := hashSpec(observed.Parent.Spec)
-	oldHash, exists := c.cache[observed.Parent.Metadata.Name]
+	newHash := HashSpec(observed.Parent.Spec)
+	oldHash, exists := c.Cache[observed.Parent.Metadata.Name]
 
 	return !exists || newHash != oldHash
 }
@@ -138,11 +138,11 @@ func (c *Controller) UpdateCache(observed schematypes.SyncRequest) {
 	c.cacheMutex.Lock()
 	defer c.cacheMutex.Unlock()
 
-	newHash := hashSpec(observed.Parent.Spec)
-	c.cache[observed.Parent.Metadata.Name] = newHash
+	newHash := HashSpec(observed.Parent.Spec)
+	c.Cache[observed.Parent.Metadata.Name] = newHash
 }
 
-func hashSpec(spec schematypes.TerraformConfigSpec) string {
+func HashSpec(spec schematypes.TerraformConfigSpec) string {
 	hash := sha256.New()
 	data, err := json.Marshal(spec)
 	if err != nil {

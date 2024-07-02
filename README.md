@@ -1,12 +1,12 @@
 ## Introduction
 
-> **Infrastructure cloud agnostic continuous delivery platform**
+> **Infrastructure continuous delivery platform**
 
 ## Design Goal
 
 - Simple workload specifications
 
-- Intentionally unopionated, left the level of infra deployment abstraction to infra team
+- Intentionally unopionated, left the level of infra backend abstraction to infra team
 
 - Free to design what constitutes your deploy script instead of simply terraform plan and apply
 
@@ -20,7 +20,7 @@
 
 > If you are using a gitops delivery tool such as Argocd or fluxcd. It will continue to reconcile the crd manifests as always. However to avoid conflict with the controller `sync interval` the reconciliation is processed when a drift in crd is noted or if argocd/fluxcd is trying to sync a new crd manifest
 
-> **Note that the infrastructure drift detection and reconciliation is handled directly the controller**
+> **Note that the infrastructure drift detection and reconciliation is handled directly by the controller**
 
 ## setup
 
@@ -142,7 +142,7 @@ status:
 }
 ```
 
-- The variables should be prefixed with `TF_VAR_` thereby exploiting terraform feature of any `env` variable prefixed with `TF_VAR_` autoamtically overrides terraform defined variables
+- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
 
 ```yaml
 variables:
@@ -156,15 +156,17 @@ variables:
 
 > The `destroy` script should be `omitted` if when CRD is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
+**Sample [deploy](https://github/alustan/infrastructure/setup/cmd/deploy/main.go) and [destroy](https://github/alustan/infrastructure/setup/cmd/destroy/main.go) script in GO**
+
 ```yaml
 scripts:
   deploy: deploy
   destroy: destroy -c
 
 ```
-- `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and output stored in status field.
+- `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
 
-> An example implementation was writing a custom GO script [aws-resource]() (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
+> An example implementation was written a custom GO script [aws-resource]() (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
 
 > The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
 
@@ -220,12 +222,24 @@ postDeployOutput: {
 
 ```
 
-**This is one of multiple projects that aims to setup a functional platform for seamless application delivery and deployment with less technical overhead**
+- `status field` The Status field consists of the followings:
+
+> **`state`: Current state - `Progressing` `error` `Success` `Completed`**
+
+> **`message`: Detailed message regarding current state**
+
+> **`output`: Terraform Output**
+
+> **`ingressURLs`: Lists all urls associated with all of the ingress resource in the cluster**
+
+> **`credentials`: Retrieves `username` and `passwords` associated with some cluster addons; In this case it just attempts to retrieve `argocd` and `grafana` login creds if found in the cluster**
+
+> **`postDeployOutput`: Custom field to store output of your `postdeploy` script if specified**
 
 **Check Out:**
 
-1. [infrastructure](https://github.com/alustan/infrastructure) `Modular and extensible infrastructure setup`
+ https://github.com/alustan/infrastructure for infrastructure backend implementation
 
-2. [manifests](https://github.com/alustan/manifests) `Cluster manifests`
+**Alustan:** focuses on building tools and platforms that ensures right implementation of devops principles
 
-4. [backstage-portal](https://github.com/alustan/backstage-portal) `Backstage portal`
+
