@@ -59,7 +59,6 @@ apiVersion: alustan.io/v1alpha1
 kind: Terraform
 metadata:
   name: staging-cluster
-  namespace: staging
 spec:
   variables:
     TF_VAR_provision_cluster: "true"
