@@ -33,7 +33,7 @@ jobs:
       - name: Update Chart.yaml version and appVersion
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          yq --inplace ".appVersion = \"${VERSION}\"" ./helm/alustan-helm/Chart.yaml
+          yq --inplace ".image.infra.tag = \"${VERSION}\"" ./helm/alustan-helm/values.yaml
           cat ./helm/alustan-helm/Chart.yaml  # For debugging purposes
 
       - name: Save and publish Helm chart to Docker registry

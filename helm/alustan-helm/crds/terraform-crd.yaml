@@ -22,7 +22,6 @@ spec:
             spec:
               type: object
               properties:
-               
                 variables:
                   type: object
                   additionalProperties: true
@@ -65,7 +64,5 @@ spec:
                   type: object
                 credentials:
                   type: object
-                
-
       subresources:
         status: {}
