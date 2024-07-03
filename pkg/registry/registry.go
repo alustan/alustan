@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/alustan/pkg/imagetag"
 	"github.com/alustan/pkg/util"
@@ -139,8 +140,8 @@ func getLatestTag(tags []string, semanticVersion string) (string, error) {
 }
 
 
-
-func updateTaggedImageConfigMap(clientset  kubernetes.Interface, namespace, name, taggedImageName string) error {
+// updateTaggedImageConfigMap updates or creates a ConfigMap with the tagged image name
+func updateTaggedImageConfigMap(clientset kubernetes.Interface, namespace, name, taggedImageName string) error {
 	configMapData := map[string]string{
 		"lastTaggedImage": taggedImageName,
 	}
@@ -152,9 +153,23 @@ func updateTaggedImageConfigMap(clientset  kubernetes.Interface, namespace, name
 		Data: configMapData,
 	}
 
+	// Try to create the ConfigMap
 	_, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to create ConfigMap: %v", err)
+		if apierrors.IsAlreadyExists(err) {
+			// If the ConfigMap already exists, update it
+			existingConfigMap, getErr := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMap.Name, metav1.GetOptions{})
+			if getErr != nil {
+				return fmt.Errorf("failed to get existing ConfigMap: %v", getErr)
+			}
+			existingConfigMap.Data = configMapData
+			_, updateErr := clientset.CoreV1().ConfigMaps(namespace).Update(context.Background(), existingConfigMap, metav1.UpdateOptions{})
+			if updateErr != nil {
+				return fmt.Errorf("failed to update existing ConfigMap: %v", updateErr)
+			}
+		} else {
+			return fmt.Errorf("failed to create ConfigMap: %v", err)
+		}
 	}
 	return nil
 }
