@@ -82,7 +82,11 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	var observed schematypes.SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
-		r.String(http.StatusBadRequest, err.Error())
+	 
+	   response := gin.H{"body": err.Error()}
+	   r.Writer.Header().Set("Content-Type", "application/json")
+	   r.JSON(http.StatusBadRequest, response)
+		
 		return
 	}
 	defer func() {
@@ -103,7 +107,11 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Enqueue the wrapped SyncRequest for processing
 	c.enqueue(&wrapped)
-	r.String(http.StatusOK, "Request enqueued for processing")
+
+	// Return the response in the expected format
+	response := gin.H{"body": "Request enqueued for processing"}
+	r.Writer.Header().Set("Content-Type", "application/json")
+	r.JSON(http.StatusOK, response)
 }
 
 func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[string]interface{} {
@@ -130,7 +138,7 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[str
 	if status != nil {
 		return status
 	}
-
+	log.Printf("taggedImageName: %v", taggedImageName)
 	return terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars, c.updateStatus)
 }
 

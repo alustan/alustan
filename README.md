@@ -74,8 +74,8 @@ spec:
       region: TF_VAR_region
   containerRegistry:
     provider: docker
-    imageName: alustan/terraform-control # image name to be pulled by the controller
-    semanticVersion: ">=1.0.0" # semantic constraint
+    imageName: alustan/infrastructure # image name to be pulled by the controller
+    semanticVersion: "~1.0.0" # semantic constraint
  ###################################################################################   
 status:
   state: "Progressing"
