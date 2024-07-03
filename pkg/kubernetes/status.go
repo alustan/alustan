@@ -6,13 +6,12 @@ package kubernetes
 import (
 	"context"
 	"log"
-	"errors"
+	
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 )
-
 
 // UpdateStatus updates the status subresource of a Custom Resource
 func UpdateStatus(dynClient dynamic.Interface, namespace, name string, status map[string]interface{}) error {
@@ -29,10 +28,9 @@ func UpdateStatus(dynClient dynamic.Interface, namespace, name string, status ma
 		return err
 	}
 
-	// Check if the status subresource is defined
+	// Initialize the status field if not present
 	if _, found := unstructuredResource.Object["status"]; !found {
-		log.Printf("Status subresource not found for resource %s in namespace %s", name, namespace)
-		return errors.New("status subresource not defined")
+		unstructuredResource.Object["status"] = map[string]interface{}{}
 	}
 
 	// Update the status
