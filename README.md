@@ -12,7 +12,7 @@
 
 - Ability to write postDeploy script that can perform any requested action and store the output in crd status field
 
-- Intentionally outsourced the packaging of the IAC OCI image to accomodate for different cloud/onprem services. [base image sample](./examples/Dockerfile) 
+- Intentionally outsourced the packaging of the IAC OCI image to accomodate for different cloud services. [base image sample](./examples/Dockerfile) 
 
 -  Scans your container registry every 6hrs and uses the latest image that satisfies the specified semantic tag constraint.
 
