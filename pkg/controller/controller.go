@@ -83,6 +83,9 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 		}
 	}()
 
+	// Log all fields in observed for debugging purposes
+	log.Printf("Observed SyncRequest: %+v", observed)
+
 	key := fmt.Sprintf("%s/%s", observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 
 	// Store the observed SyncRequest in the map
@@ -94,6 +97,7 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.enqueue(key)
 	r.String(http.StatusOK, "Request enqueued for processing")
 }
+
 
 func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[string]interface{} {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
