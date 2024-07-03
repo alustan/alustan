@@ -1,8 +1,7 @@
 package schematypes
 
 import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
+	
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
