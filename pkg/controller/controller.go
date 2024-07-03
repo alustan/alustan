@@ -47,7 +47,6 @@ func (w *SyncRequestWrapper) GetObjectMeta() metav1.Object {
 	return &w.SyncRequest.Parent.Metadata
 }
 
-
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
 	return &Controller{
 		clientset:    clientset,
@@ -92,9 +91,6 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 		}
 	}()
 
-	// Log all fields in observed for debugging purposes
-	log.Printf("Observed SyncRequest: %+v", observed)
-
 	key := fmt.Sprintf("%s/%s", observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 
 	// Store the observed SyncRequest in the map
@@ -102,11 +98,13 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
-	// Enqueue the request for processing
-	c.enqueue(key)
+	// Wrap the observed SyncRequest
+	wrapped := SyncRequestWrapper{observed}
+
+	// Enqueue the wrapped SyncRequest for processing
+	c.enqueue(&wrapped)
 	r.String(http.StatusOK, "Request enqueued for processing")
 }
-
 
 func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[string]interface{} {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
@@ -172,6 +170,7 @@ func HashSpec(spec schematypes.TerraformConfigSpec) string {
 	hash.Write(data)
 	return hex.EncodeToString(hash.Sum(nil))
 }
+
 func (c *Controller) enqueue(obj interface{}) {
 	var key string
 	var err error
@@ -182,6 +181,8 @@ func (c *Controller) enqueue(obj interface{}) {
 		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
 	case *SyncRequestWrapper:
 		key, err = cache.MetaNamespaceKeyFunc(o)
+	case string:
+		key = o
 	default:
 		log.Printf("Unsupported object type passed to enqueue: %T", obj)
 		return
@@ -206,12 +207,10 @@ func (c *Controller) processNextItem() bool {
 	}
 	defer c.workqueue.Done(key)
 
-	// Here, instead of fetching the resource, we assume it was provided directly by metacontroller
 	var observed schematypes.SyncRequest
 	observed = c.getObservedFromKey(key.(string))
-	if !c.isObservedSyncRequestEmpty(observed) {
+	if c.isObservedSyncRequestEmpty(observed) {
 		log.Printf("Error fetching resource for key %s", key)
-		c.workqueue.AddRateLimited(key)
 		return true
 	}
 
@@ -272,6 +271,6 @@ func (c *Controller) reconcileLoop() {
 	log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
 
 	for _, item := range resourceList.Items {
-		c.enqueue(item)
+		c.enqueue(item.GetName())
 	}
 }
