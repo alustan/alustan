@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
+	
 
-	"github.com/blang/semver/v4"
+	"github.com/Masterminds/semver/v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -112,44 +112,32 @@ func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface
 }
 
 func getLatestTag(tags []string, semanticVersion string) (string, error) {
-	var validTags []semver.Version
-	for _, tag := range tags {
-		v, err := semver.ParseTolerant(tag)
-		if err == nil {
-			validTags = append(validTags, v)
-		} else {
-			log.Printf("Invalid tag: %s, error: %v", tag, err)
-		}
-	}
+    constraint, err := semver.NewConstraint(semanticVersion)
+    if err != nil {
+        return "", fmt.Errorf("error parsing semantic version constraint: %w", err)
+    }
 
-	if len(validTags) == 0 {
-		return "", fmt.Errorf("no valid semantic version tags found")
-	}
+    var latestVersion *semver.Version
+    for _, tag := range tags {
+        version, err := semver.NewVersion(tag)
+        if err != nil {
+            continue // Skip tags that are not valid semantic versions
+        }
 
-	constraint, err := semver.ParseRange(semanticVersion)
-	if err != nil {
-		return "", fmt.Errorf("error parsing semantic version constraint: %w", err)
-	}
+        if constraint.Check(version) {
+            if latestVersion == nil || version.GreaterThan(latestVersion) {
+                latestVersion = version
+            }
+        }
+    }
 
-	filteredTags := []semver.Version{}
-	for _, tag := range validTags {
-		if constraint(tag) {
-			filteredTags = append(filteredTags, tag)
-		}
-	}
+    if latestVersion == nil {
+        return "", fmt.Errorf("no valid versions found for constraint %s", semanticVersion)
+    }
 
-	if len(filteredTags) == 0 {
-		log.Println("No tags matching the semantic version constraint found")
-		return "", nil
-	}
-
-	sort.Slice(filteredTags, func(i, j int) bool {
-		return filteredTags[i].GT(filteredTags[j])
-	})
-	latestTag := filteredTags[0]
-
-	return latestTag.String(), nil
+    return latestVersion.String(), nil
 }
+
 
 
 func updateTaggedImageConfigMap(clientset  kubernetes.Interface, namespace, name, taggedImageName string) error {

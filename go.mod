@@ -3,7 +3,7 @@ module github.com/alustan
 go 1.22.2
 
 require (
-	github.com/blang/semver/v4 v4.0.0
+	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/gin-gonic/gin v1.10.0
 	k8s.io/api v0.26.11
 	k8s.io/apimachinery v0.26.11
