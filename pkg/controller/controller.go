@@ -39,6 +39,15 @@ type Controller struct {
 	mapMutex     sync.Mutex                         // Mutex to protect map access
 }
 
+type SyncRequestWrapper struct {
+	SyncRequest schematypes.SyncRequest
+}
+
+func (w *SyncRequestWrapper) GetObjectMeta() metav1.Object {
+	return &w.SyncRequest.Parent.Metadata
+}
+
+
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
 	return &Controller{
 		clientset:    clientset,
@@ -163,7 +172,6 @@ func HashSpec(spec schematypes.TerraformConfigSpec) string {
 	hash.Write(data)
 	return hex.EncodeToString(hash.Sum(nil))
 }
-
 func (c *Controller) enqueue(obj interface{}) {
 	var key string
 	var err error
@@ -172,8 +180,11 @@ func (c *Controller) enqueue(obj interface{}) {
 	case schematypes.SyncRequest:
 		wrapped := schematypes.SyncRequestWrapper{o}
 		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
+	case *schematypes.SyncRequestWrapper:
+		key, err = cache.MetaNamespaceKeyFunc(o)
 	default:
-		key, err = cache.MetaNamespaceKeyFunc(obj)
+		log.Printf("Unsupported object type passed to enqueue: %T", obj)
+		return
 	}
 
 	if err != nil {
@@ -182,7 +193,6 @@ func (c *Controller) enqueue(obj interface{}) {
 	}
 	c.workqueue.Add(key)
 }
-
 
 func (c *Controller) runWorker() {
 	for c.processNextItem() {
@@ -196,7 +206,7 @@ func (c *Controller) processNextItem() bool {
 	}
 	defer c.workqueue.Done(key)
 
-	// Here, instead of fetching the resource, we assume it was provided directly
+	// Here, instead of fetching the resource, we assume it was provided directly by metacontroller
 	var observed schematypes.SyncRequest
 	observed = c.getObservedFromKey(key.(string))
 	if !c.isObservedSyncRequestEmpty(observed) {
