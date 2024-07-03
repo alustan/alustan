@@ -119,6 +119,8 @@ func getLatestTag(tags []string, semanticVersion string) (string, error) {
 		v, err := semver.ParseTolerant(tag)
 		if err == nil {
 			validTags = append(validTags, v)
+		} else {
+			log.Printf("Invalid tag: %s, error: %v", tag, err)
 		}
 	}
 
@@ -150,6 +152,7 @@ func getLatestTag(tags []string, semanticVersion string) (string, error) {
 
 	return latestTag.String(), nil
 }
+
 
 func updateTaggedImageConfigMap(clientset  kubernetes.Interface, namespace, name, taggedImageName string) error {
 	configMapData := map[string]string{
