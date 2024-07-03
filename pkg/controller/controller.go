@@ -178,9 +178,9 @@ func (c *Controller) enqueue(obj interface{}) {
 
 	switch o := obj.(type) {
 	case schematypes.SyncRequest:
-		wrapped := schematypes.SyncRequestWrapper{o}
+		wrapped := SyncRequestWrapper{o}
 		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
-	case *schematypes.SyncRequestWrapper:
+	case *SyncRequestWrapper:
 		key, err = cache.MetaNamespaceKeyFunc(o)
 	default:
 		log.Printf("Unsupported object type passed to enqueue: %T", obj)
