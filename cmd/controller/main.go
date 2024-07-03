@@ -35,8 +35,8 @@ func main() {
 	// Create a stop channel
 	stopCh := make(chan struct{})
 
-	// Create a controller with the stop channel
-	ctrl := controller.NewInClusterController(syncInterval, stopCh)
+	// Create a controller
+	ctrl := controller.NewInClusterController(syncInterval)
 
 	// Start the reconciliation loop in a separate goroutine
 	go ctrl.Reconcile(stopCh)
