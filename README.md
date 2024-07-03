@@ -155,7 +155,8 @@ variables:
 
 > The `destroy` script should be `omitted` if when CRD is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
-**Sample [deploy](https://github/alustan/infrastructure/setup/cmd/deploy/main.go) and [destroy](https://github/alustan/infrastructure/setup/cmd/destroy/main.go) script in GO**
+**Sample [deploy](https://github.com/alustan/infrastructure) and [destroy](https://github.com/alustan/infrastructure) script in GO**
+
 
 ```yaml
 scripts:
@@ -165,7 +166,7 @@ scripts:
 ```
 - `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
 
-> An example implementation was written a custom GO script [aws-resource]() (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
 
 > The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
 
@@ -237,7 +238,7 @@ postDeployOutput: {
 
 **Check Out:**
 
- https://github.com/alustan/infrastructure for infrastructure backend implementation
+ https://github.com/alustan/infrastructure for infrastructure backend reference implementation
 
 **Alustan:** focuses on building tools and platforms that ensures right implementation of devops principles
 
