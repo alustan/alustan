@@ -161,13 +161,24 @@ func HashSpec(spec schematypes.TerraformConfigSpec) string {
 }
 
 func (c *Controller) enqueue(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
+	var key string
+	var err error
+
+	switch o := obj.(type) {
+	case schematypes.SyncRequest:
+		wrapped := schematypes.SyncRequestWrapper{o}
+		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
+	default:
+		key, err = cache.MetaNamespaceKeyFunc(obj)
+	}
+
 	if err != nil {
 		log.Printf("Error creating key for object: %v", err)
 		return
 	}
 	c.workqueue.Add(key)
 }
+
 
 func (c *Controller) runWorker() {
 	for c.processNextItem() {
