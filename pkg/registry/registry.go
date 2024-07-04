@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	
 
 	"github.com/Masterminds/semver/v3"
 	corev1 "k8s.io/api/core/v1"
@@ -23,8 +22,8 @@ func GetTaggedImageName(
 	observed schematypes.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-	updateStatus func(observed schematypes.SyncRequest, status map[string]interface{}) error,
-) (string, map[string]interface{}) {
+	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
+) (string, schematypes.ParentResourceStatus) {
 	if observed.Finalizing {
 		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 		if err != nil {
@@ -37,33 +36,32 @@ func GetTaggedImageName(
 			}
 			return "", status
 		}
-		return taggedImageName, nil
+		return taggedImageName, schematypes.ParentResourceStatus{}
 	} else {
 		taggedImageName, status := handleContainerRegistry(observed, scriptContent, clientset, updateStatus)
-		if status != nil {
+		if status.State != "" {
 			return "", status
 		}
-		return taggedImageName, nil
+		return taggedImageName, schematypes.ParentResourceStatus{}
 	}
 }
-
 
 func handleContainerRegistry(
 	observed schematypes.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-	updateStatus func(observed schematypes.SyncRequest, status map[string]interface{}) error,
-) (string, map[string]interface{}) {
+	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
+) (string, schematypes.ParentResourceStatus) {
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {
 		log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
 		status := util.ErrorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
@@ -72,11 +70,11 @@ func handleContainerRegistry(
 	if err != nil {
 		status := util.ErrorResponse("creating Docker config secret", err)
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
@@ -85,11 +83,11 @@ func handleContainerRegistry(
 	if err != nil {
 		status := util.ErrorResponse("creating registry client", err)
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
@@ -98,11 +96,11 @@ func handleContainerRegistry(
 	if err != nil {
 		status := util.ErrorResponse("fetching image tags", err)
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
@@ -111,11 +109,11 @@ func handleContainerRegistry(
 	if err != nil {
 		status := util.ErrorResponse("determining latest image tag", err)
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
@@ -124,19 +122,16 @@ func handleContainerRegistry(
 	if err != nil {
 		status := util.ErrorResponse("updating image tag in configmap", err)
 		err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
-			
-		
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
 		return "", status
 	}
 
-	return taggedImageName, nil
+	return taggedImageName, schematypes.ParentResourceStatus{}
 }
-
 
 func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface, error) {
 	switch provider {
@@ -150,32 +145,31 @@ func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface
 }
 
 func getLatestTag(tags []string, semanticVersion string) (string, error) {
-    constraint, err := semver.NewConstraint(semanticVersion)
-    if err != nil {
-        return "", fmt.Errorf("error parsing semantic version constraint: %w", err)
-    }
+	constraint, err := semver.NewConstraint(semanticVersion)
+	if (err != nil) {
+		return "", fmt.Errorf("error parsing semantic version constraint: %w", err)
+	}
 
-    var latestVersion *semver.Version
-    for _, tag := range tags {
-        version, err := semver.NewVersion(tag)
-        if err != nil {
-            continue // Skip tags that are not valid semantic versions
-        }
+	var latestVersion *semver.Version
+	for _, tag := range tags {
+		version, err := semver.NewVersion(tag)
+		if err != nil {
+			continue // Skip tags that are not valid semantic versions
+		}
 
-        if constraint.Check(version) {
-            if latestVersion == nil || version.GreaterThan(latestVersion) {
-                latestVersion = version
-            }
-        }
-    }
+		if constraint.Check(version) {
+			if latestVersion == nil || version.GreaterThan(latestVersion) {
+				latestVersion = version
+			}
+		}
+	}
 
-    if latestVersion == nil {
-        return "", fmt.Errorf("no valid versions found for constraint %s", semanticVersion)
-    }
+	if latestVersion == nil {
+		return "", fmt.Errorf("no valid versions found for constraint %s", semanticVersion)
+	}
 
-    return latestVersion.String(), nil
+	return latestVersion.String(), nil
 }
-
 
 // updateTaggedImageConfigMap updates or creates a ConfigMap with the tagged image name
 func updateTaggedImageConfigMap(clientset kubernetes.Interface, namespace, name, taggedImageName string) error {
@@ -211,7 +205,7 @@ func updateTaggedImageConfigMap(clientset kubernetes.Interface, namespace, name,
 	return nil
 }
 
-func getTaggedImageNameFromConfigMap(clientset  kubernetes.Interface, namespace, name string) (string, error) {
+func getTaggedImageNameFromConfigMap(clientset kubernetes.Interface, namespace, name string) (string, error) {
 	configMapName := fmt.Sprintf("%s-tagged-image", name)
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	if err != nil {

@@ -29,13 +29,15 @@ type ContainerRegistry struct {
 }
 
 type ParentResourceStatus struct {
-	State           string                 `json:"state,omitempty"`
-	Message         string                 `json:"message,omitempty"`
-	Output          map[string]interface{} `json:"output,omitempty"`
+	State            string                 `json:"state"`
+	Message          string                 `json:"message"`
+	Output           map[string]interface{} `json:"output,omitempty"`
 	PostDeployOutput map[string]interface{} `json:"postDeployOutput,omitempty"`
-	IngressURLs     map[string]interface{} `json:"ingressURLs,omitempty"`
-	Credentials     map[string]interface{} `json:"credentials,omitempty"`
+	IngressURLs      map[string]interface{} `json:"ingressURLs,omitempty"`
+	Credentials      map[string]interface{} `json:"credentials,omitempty"`
+	Finalized        bool                   `json:"finalized"`
 }
+
 
 type ParentResource struct {
 	ApiVersion string              `json:"apiVersion"`
