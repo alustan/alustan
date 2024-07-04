@@ -29,7 +29,12 @@ func GetTaggedImageName(
 		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 		if err != nil {
 			status := util.ErrorResponse("retrieving tagged image name", err)
-			updateStatus(observed, status)
+			err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 			return "", status
 		}
 		return taggedImageName, nil
@@ -53,7 +58,12 @@ func handleContainerRegistry(
 	if encodedDockerConfigJSON == "" {
 		log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
 		status := util.ErrorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 		return "", status
 	}
 
@@ -61,7 +71,12 @@ func handleContainerRegistry(
 	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
 	if err != nil {
 		status := util.ErrorResponse("creating Docker config secret", err)
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 		return "", status
 	}
 
@@ -69,7 +84,12 @@ func handleContainerRegistry(
 	registryClient, err := getRegistryClient(provider, token)
 	if err != nil {
 		status := util.ErrorResponse("creating registry client", err)
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 		return "", status
 	}
 
@@ -77,7 +97,12 @@ func handleContainerRegistry(
 	tags, err := registryClient.GetTags(image)
 	if err != nil {
 		status := util.ErrorResponse("fetching image tags", err)
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 		return "", status
 	}
 
@@ -85,7 +110,12 @@ func handleContainerRegistry(
 	latestTag, err := getLatestTag(tags, semanticVersion)
 	if err != nil {
 		status := util.ErrorResponse("determining latest image tag", err)
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
 		return "", status
 	}
 
@@ -93,7 +123,14 @@ func handleContainerRegistry(
 	err = updateTaggedImageConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, taggedImageName)
 	if err != nil {
 		status := util.ErrorResponse("updating image tag in configmap", err)
-		updateStatus(observed, status)
+		err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
+			
+		
 		return "", status
 	}
 
