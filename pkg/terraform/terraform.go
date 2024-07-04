@@ -284,7 +284,7 @@ func runPostDeploy(
 
 	fmt.Println("Command:", command)
 
-	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName, "postDeploy")
+	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName, "postdeploy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create post-deploy pod: %v", err)
 	}
