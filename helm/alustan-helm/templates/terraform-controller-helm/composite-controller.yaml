@@ -8,6 +8,7 @@ spec:
   parentResource:
     apiVersion: alustan.io/v1alpha1
     resource: terraforms
+    ignoreStatusChanges: true
 
   hooks:
     sync:
