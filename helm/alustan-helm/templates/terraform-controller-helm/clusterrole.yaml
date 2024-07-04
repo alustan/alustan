@@ -8,7 +8,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["alustan.io"]
   resources: ["terraforms/status"]
-  verbs: ["get", "update"]
+  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
 - apiGroups: [""]
   resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"] 
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
@@ -24,6 +24,19 @@ rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
   verbs: ["list","get"]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
