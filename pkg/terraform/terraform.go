@@ -1,13 +1,14 @@
 package terraform
 
 import (
+
 	"fmt"
 	"log"
-	
 	"strings"
-	"time"
+	
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 
 	kubernetespkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/util"
@@ -34,7 +35,13 @@ func GetScriptContent(
 		scriptContent = observed.Parent.Spec.Scripts.Deploy
 		if scriptContent == "" {
 			status := util.ErrorResponse("executing script", fmt.Errorf("deploy script is missing"))
-			updateStatus(observed, status)
+			err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
+
 			return "", status
 		}
 	}
@@ -42,69 +49,123 @@ func GetScriptContent(
 	return scriptContent, nil
 }
 
-
 func ExecuteTerraform(
-	clientset  kubernetes.Interface,
+	clientset kubernetes.Interface,
 	observed schematypes.SyncRequest,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
 	updateStatus func(observed schematypes.SyncRequest, status map[string]interface{}) error,
 ) map[string]interface{} {
-	
+
 	if observed.Finalizing {
-		updateStatus(observed, map[string]interface{}{
+		err := updateStatus(observed, map[string]interface{}{
 			"state":   "Progressing",
 			"message": "Running Terraform Destroy",
 		})
-	
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", map[string]interface{}{
+				"state":   "Progressing",
+				"message": "Running Terraform Destroy",
+			})
+		}
+
 		status := runDestroy(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
-		updateStatus(observed, status)
-	
+
+		err = updateStatus(observed, status)
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", status)
+		}
+
 		if status["state"] == "Success" {
 			finalStatus := map[string]interface{}{
 				"state":     "Completed",
 				"message":   "Destroy process completed successfully",
 				"finalized": true,
 			}
-			updateStatus(observed, finalStatus)
+
+			err = updateStatus(observed, finalStatus)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", finalStatus)
+			}
 			return finalStatus
 		}
-	
+
 		return status
 	}
 
-	updateStatus(observed, map[string]interface{}{
+	err := updateStatus(observed, map[string]interface{}{
 		"state":   "Progressing",
 		"message": "Running Terraform Apply",
 	})
+	if err != nil {
+		log.Printf("Failed to update status: %v", err)
+	} else {
+		log.Printf("Successfully updated status: %v", map[string]interface{}{
+			"state":   "Progressing",
+			"message": "Running Terraform Apply",
+		})
+	}
 
 	status := runApply(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
-	updateStatus(observed, status)
+
+	err = updateStatus(observed, status)
+	if err != nil {
+		log.Printf("Failed to update status: %v", err)
+	} else {
+		log.Printf("Successfully updated status: %v", status)
+	}
 
 	if status["state"] == "Failed" {
 		return status
 	}
 
 	if observed.Parent.Spec.PostDeploy.Script != "" {
-		updateStatus(observed, map[string]interface{}{
+
+		err := updateStatus(observed, map[string]interface{}{
 			"state":   "Progressing",
 			"message": "Running postDeploy script",
 		})
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", map[string]interface{}{
+				"state":   "Progressing",
+				"message": "Running postDeploy script",
+			})
+		}
 
+		postDeployOutput, err := runPostDeploy(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, observed.Parent.Spec.PostDeploy, envVars, taggedImageName, secretName)
+		if err != nil {
+			status := util.ErrorResponse("executing postDeploy script", err)
 
-	postDeployOutput, err := runPostDeploy(clientset,observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace,observed.Parent.Spec.PostDeploy, envVars,taggedImageName,secretName)
-	if err != nil {
-		status := util.ErrorResponse("executing postDeploy script", err)
-		updateStatus(observed, status)
-		return status
-	}
+			err := updateStatus(observed, status)
+			if err != nil {
+				log.Printf("Failed to update status: %v", err)
+			} else {
+				log.Printf("Successfully updated status: %v", status)
+			}
+			return status
+		}
 
 		finalStatus := map[string]interface{}{
 			"state":            "Completed",
 			"message":          "Processing completed successfully",
 			"postDeployOutput": postDeployOutput,
 		}
-		updateStatus(observed, finalStatus)
+
+		err = updateStatus(observed, finalStatus)
+		if err != nil {
+			log.Printf("Failed to update status: %v", err)
+		} else {
+			log.Printf("Successfully updated status: %v", finalStatus)
+		}
+
 		return finalStatus
 	}
 
@@ -112,12 +173,19 @@ func ExecuteTerraform(
 		"state":   "Completed",
 		"message": "Processing completed successfully",
 	}
-	updateStatus(observed, finalStatus)
+
+	err = updateStatus(observed, finalStatus)
+	if err != nil {
+		log.Printf("Failed to update status: %v", err)
+	} else {
+		log.Printf("Successfully updated status: %v", finalStatus)
+	}
+
 	return finalStatus
 }
 
 func runApply(
-	clientset  kubernetes.Interface,
+	clientset kubernetes.Interface,
 	observed schematypes.SyncRequest,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
@@ -125,21 +193,19 @@ func runApply(
 	var terraformErr error
 	var podName string
 
-	for i := 0; i < maxRetries; i++ {
+	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
+		log.Printf("Error occurred: %v", err)
+		return strings.Contains(err.Error(), "timeout") // Retry only on timeout errors
+	}, func() error {
 		podName, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
-
-		if terraformErr == nil {
-			break
-		}
-		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-		time.Sleep(2 * time.Minute)
-	}
+		return terraformErr
+	})
 
 	status := map[string]interface{}{
 		"state":   "Success",
 		"message": "Terraform applied successfully",
 	}
-	if terraformErr != nil {
+	if err != nil {
 		status["state"] = "Failed"
 		status["message"] = terraformErr.Error()
 		return status
@@ -193,20 +259,20 @@ func runDestroy(
 	// Call to run Terraform destroy
 	var terraformErr error
 
-	for i := 0; i < maxRetries; i++ {
+	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
+		
+		log.Printf("Error occurred: %v", err)
+		return strings.Contains(err.Error(), "timeout") // Retry only on timeout errors
+	}, func() error {
 		_, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		return terraformErr
+	})
 
-		if terraformErr == nil {
-			break
-		}
-		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-		time.Sleep(1 * time.Minute)
-	}
 	status := map[string]interface{}{
 		"state":   "Success",
 		"message": "Terraform destroyed successfully",
 	}
-	if terraformErr != nil {
+	if err != nil {
 		status["state"] = "Failed"
 		status["message"] = terraformErr.Error()
 		return status
@@ -214,7 +280,6 @@ func runDestroy(
 
 	return status
 }
-
 
 func runPostDeploy(
 	clientset kubernetes.Interface,

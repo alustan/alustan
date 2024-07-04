@@ -44,4 +44,4 @@ WORKDIR /app
 # Copy the rest of your application
 COPY . .
 
-CMD ["/bin/bash", "-c", "chmod +x $SCRIPT && exec $SCRIPT"]
+CMD ["/bin/bash", "-c", "chmod +x $SCRIPT && exec $SCRIPT $ARGS"]
