@@ -16,19 +16,37 @@ import (
 
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset  kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName string) (string, error) {
+func CreateRunPod(clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName string) (string, error) {
     labelSelector := fmt.Sprintf("apprun=%s", name)
 
-    // Check for existing pods with the same label
-    exists, err := CheckExistingPods(clientset, namespace, labelSelector)
+    // Check and delete existing pods with the same label
+    pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+        LabelSelector: labelSelector,
+    })
     if err != nil {
-        log.Printf("Error checking existing pods: %v", err)
+        log.Printf("Error listing existing pods: %v", err)
         return "", err
     }
 
-    if exists {
-        log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
-        return "", fmt.Errorf("existing pods with label %s found, not creating new pod", labelSelector)
+    for _, pod := range pods.Items {
+        log.Printf("Removing finalizers and deleting existing pod: %s", pod.Name)
+
+        // Remove finalizers
+        if len(pod.ObjectMeta.Finalizers) > 0 {
+            pod.ObjectMeta.Finalizers = []string{}
+            _, err := clientset.CoreV1().Pods(namespace).Update(context.Background(), &pod, metav1.UpdateOptions{})
+            if err != nil {
+                log.Printf("Error removing finalizers from pod %s: %v", pod.Name, err)
+                return "", err
+            }
+        }
+
+        // Delete the pod
+        err := clientset.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+        if err != nil {
+            log.Printf("Error deleting existing pod: %v", err)
+            return "", err
+        }
     }
 
     // Generate a unique pod name using the current timestamp
@@ -46,10 +64,13 @@ func CreateRunPod(clientset  kubernetes.Interface, name, namespace, scriptName s
         log.Printf("Setting environment variable %s=%s", key, value)
     }
 
-   // Add the script name as an environment variable
+    // Add the script name as an environment variable
+    if !strings.HasPrefix(scriptName, "./") {
+        scriptName = "./" + scriptName
+    }
     env = append(env, v1.EnvVar{
         Name:  "SCRIPT",
-        Value: "./" + scriptName,  
+        Value: scriptName,
     })
 
     pod := &v1.Pod{
@@ -105,17 +126,21 @@ func CreateRunPod(clientset  kubernetes.Interface, name, namespace, scriptName s
     return podName, nil
 }
 
+
 // WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output.
-func WaitForPodCompletion(clientset  kubernetes.Interface, namespace, podName string) (map[string]string, error) {
+func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName string) (map[string]string, error) {
     for {
         pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
         if err != nil {
             return nil, err
         }
-        if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+        if pod.Status.Phase == v1.PodSucceeded {
             break
         }
-        time.Sleep(2 * time.Minute)
+        if pod.Status.Phase == v1.PodFailed {
+            return nil, fmt.Errorf("pod %s failed", podName)
+        }
+        time.Sleep(1 * time.Minute)
     }
 
     req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &v1.PodLogOptions{})
@@ -152,6 +177,10 @@ func WaitForPodCompletion(clientset  kubernetes.Interface, namespace, podName st
             if len(parts) == 2 {
                 key := strings.TrimSpace(parts[0])
                 value := strings.TrimSpace(parts[1])
+                // Remove quotes from value if present
+                if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+                    value = value[1 : len(value)-1]
+                }
                 outputs[key] = value
             }
         }
