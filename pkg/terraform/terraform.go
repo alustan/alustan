@@ -197,7 +197,7 @@ func runApply(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout") // Retry only on timeout errors
 	}, func() error {
-		podName, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		podName, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -264,7 +264,7 @@ func runDestroy(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout") // Retry only on timeout errors
 	}, func() error {
-		_, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		_, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName,"destroy")
 		return terraformErr
 	})
 
@@ -311,7 +311,7 @@ func runPostDeploy(
 	fmt.Println("Command:", command)
 
 	// Create the pod to run the post-deploy script
-	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName)
+	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName, "postDeploy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create post-deploy pod: %v", err)
 	}

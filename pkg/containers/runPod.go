@@ -16,8 +16,9 @@ import (
 
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName string) (string, error) {
-	labelSelector := fmt.Sprintf("apprun=%s", name)
+func CreateRunPod(clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
+	identifier := fmt.Sprintf("%s-%s", name,service)
+	labelSelector := fmt.Sprintf("apprun=%s", identifier)
 
 	// Check and delete existing pods with the same label
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
@@ -51,7 +52,7 @@ func CreateRunPod(clientset kubernetes.Interface, name, namespace, scriptName st
 
 	// Generate a unique pod name using the current timestamp
 	timestamp := time.Now().Format("20060102150405")
-	podName := fmt.Sprintf("%s-docker-run-pod-%s", name, timestamp)
+	podName := fmt.Sprintf("%s-%s-docker-run-pod-%s", name,service,timestamp)
 
 	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
 
@@ -98,7 +99,7 @@ func CreateRunPod(clientset kubernetes.Interface, name, namespace, scriptName st
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
 			Labels: map[string]string{
-				"apprun": name,
+				"apprun": identifier,
 			},
 			Annotations: map[string]string{
 				"kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)
