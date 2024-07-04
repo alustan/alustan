@@ -3,10 +3,7 @@ package terraform
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
+	
 	"strings"
 	"time"
 
@@ -94,12 +91,13 @@ func ExecuteTerraform(
 			"message": "Running postDeploy script",
 		})
 
-		postDeployOutput, err := runPostDeploy(observed.Parent.Spec.PostDeploy, envVars)
-		if err != nil {
-			status := util.ErrorResponse("executing postDeploy script", err)
-			updateStatus(observed, status)
-			return status
-		}
+
+	postDeployOutput, err := runPostDeploy(clientset,observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace,observed.Parent.Spec.PostDeploy, envVars,taggedImageName,secretName)
+	if err != nil {
+		status := util.ErrorResponse("executing postDeploy script", err)
+		updateStatus(observed, status)
+		return status
+	}
 
 		finalStatus := map[string]interface{}{
 			"state":            "Completed",
@@ -217,44 +215,48 @@ func runDestroy(
 	return status
 }
 
+
 func runPostDeploy(
+	clientset kubernetes.Interface,
+	name,
+	namespace string,
 	postDeploy schematypes.PostDeploy,
 	envVars map[string]string,
-) (string, error) {
-	// Ensure the script path is safe
-	scriptName := filepath.Base(postDeploy.Script)
-	if !isValidScriptName(scriptName) {
-		return "", fmt.Errorf("invalid script name: %s", scriptName)
-	}
-
+	image, secretName string,
+) (map[string]interface{}, error) { 
 	// Ensure the script path starts with ./
 	scriptPath := postDeploy.Script
 	if !strings.HasPrefix(scriptPath, "./") {
-		scriptPath = "./" + scriptName
+		scriptPath = "./" + scriptPath
 	}
 
 	args := make([]string, 0, len(postDeploy.Args))
 	for flag, envVarKey := range postDeploy.Args {
 		value, ok := envVars[envVarKey]
 		if !ok {
-			return "", fmt.Errorf("environment variable %s not found", envVarKey)
+			return nil, fmt.Errorf("environment variable %s not found", envVarKey)
 		}
 		args = append(args, fmt.Sprintf("-%s=%s", flag, value))
 	}
 
-	cmd := exec.Command(scriptPath, args...)
-	cmd.Env = append(os.Environ(), util.FormatEnvVars(envVars)...)
+	// Concatenate the script and args into a single command string
+	command := fmt.Sprintf("%s %s", scriptPath, strings.Join(args, " "))
 
-	output, err := cmd.CombinedOutput()
+	// Print the constructed command for debugging
+	fmt.Println("Command:", command)
+
+	// Create the pod to run the post-deploy script
+	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName)
 	if err != nil {
-		return "", fmt.Errorf("error executing postDeploy script: %v, output: %s", err, string(output))
+		return nil, fmt.Errorf("failed to create post-deploy pod: %v", err)
 	}
 
-	return string(output), nil
+	// Wait for the pod to complete and retrieve the logs
+	output, err := containers.ExtractPostDeployOutput(clientset, namespace, podName)
+	if err != nil {
+		return nil, fmt.Errorf("error executing postDeploy script: %v", err)
+	}
+
+	return output, nil
 }
 
-func isValidScriptName(script string) bool {
-	// Allow only alphanumeric characters, dashes, and underscores in script names
-	validNamePattern := regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
-	return validNamePattern.MatchString(script)
-}
