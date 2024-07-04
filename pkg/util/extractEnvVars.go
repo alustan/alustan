@@ -5,7 +5,11 @@ import (
 	"log"
 	"fmt"
 
+	"github.com/alustan/pkg/schematypes"
+
 )
+
+
 
 
 func FormatEnvVars(envVars map[string]string) []string {
@@ -16,14 +20,14 @@ func FormatEnvVars(envVars map[string]string) []string {
 	return formattedVars
 }
 
-
-func ErrorResponse(action string, err error) map[string]interface{} {
+func ErrorResponse(action string, err error) schematypes.ParentResourceStatus {
 	log.Printf("Error %s: %v", action, err)
-	return map[string]interface{}{
-		"state":   "error",
-		"message": fmt.Sprintf("Error %s: %v", action, err),
+	return schematypes.ParentResourceStatus{
+		State:   "error",
+		Message: fmt.Sprintf("Error %s: %v", action, err),
 	}
 }
+
 
 func ExtractEnvVars(variables map[string]string) map[string]string {
 	if variables == nil {

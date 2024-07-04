@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/gin-gonic/gin v1.10.0
+	github.com/mitchellh/mapstructure v1.1.2
 	k8s.io/api v0.26.11
 	k8s.io/apimachinery v0.26.11
 	k8s.io/client-go v0.26.11

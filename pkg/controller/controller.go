@@ -114,14 +114,14 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	r.JSON(http.StatusOK, response)
 }
 
-func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[string]interface{} {
+func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) schematypes.ParentResourceStatus {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
 	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	initialStatus := map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Starting processing",
+	initialStatus := schematypes.ParentResourceStatus{
+		State:   "Progressing",
+		Message: "Starting processing",
 	}
 	err := c.updateStatus(observed, initialStatus)
 	if err != nil {
@@ -129,20 +129,16 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) map[str
 		return initialStatus
 	}
 
-	scriptContent, status := terraform.GetScriptContent(observed, c.updateStatus)
-	if status != nil {
-		return status
-	}
+	scriptContent, _ := terraform.GetScriptContent(observed, c.updateStatus)
+	
 
-	taggedImageName, status := registry.GetTaggedImageName(observed, scriptContent, c.clientset, c.updateStatus)
-	if status != nil {
-		return status
-	}
+	taggedImageName, _ := registry.GetTaggedImageName(observed, scriptContent, c.clientset, c.updateStatus)
+	
 	log.Printf("taggedImageName: %v", taggedImageName)
 	return terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars, c.updateStatus)
 }
 
-func (c *Controller) updateStatus(observed schematypes.SyncRequest, status map[string]interface{}) error {
+func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
 	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
 	if err != nil {
 		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
