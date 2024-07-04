@@ -58,11 +58,15 @@ spec:
                   type: string
                 output:
                   type: object
+                  additionalProperties: true
                 postDeployOutput:
                   type: object
+                  additionalProperties: true
                 ingressURLs:
                   type: object
+                  additionalProperties: true
                 credentials:
                   type: object
+                  additionalProperties: true
       subresources:
         status: {}
