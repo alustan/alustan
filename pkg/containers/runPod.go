@@ -114,13 +114,39 @@ func CreateOrUpdateRunJob(clientset kubernetes.Interface, name, namespace, scrip
     }
 
     if exists {
-        log.Printf("Existing job with label %s found: %s. Updating job.", labelSelector, existingJobName)
-        job.Name = existingJobName // Use existing job name for update
-        _, err := clientset.BatchV1().Jobs(namespace).Update(context.Background(), job, metav1.UpdateOptions{})
+        log.Printf("Existing job with label %s found: %s. Updating Pods.", labelSelector, existingJobName)
+
+        // Get the existing job
+        existingJob, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), existingJobName, metav1.GetOptions{})
         if err != nil {
-            log.Printf("Failed to update Job: %v", err)
+            log.Printf("Failed to get existing Job: %v", err)
             return "", err
         }
+
+        // Update the template of the existing job
+        existingJob.Spec.Template = job.Spec.Template
+
+        // List the pods managed by the job
+        podList, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+            LabelSelector: labelSelector,
+        })
+        if err != nil {
+            log.Printf("Failed to list Pods for Job: %v", err)
+            return "", err
+        }
+
+        // Delete the pods to force the job to recreate them with the updated template
+        for _, pod := range podList.Items {
+            err := clientset.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+            if err != nil {
+                log.Printf("Failed to delete Pod: %v", err)
+                return "", err
+            }
+            log.Printf("Deleted Pod: %s", pod.Name)
+        }
+
+        log.Println("Pods deleted successfully, Job will recreate them with the updated template.")
+        return existingJobName, nil
     } else {
         log.Println("Creating new Job...")
         _, err := clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
@@ -128,10 +154,9 @@ func CreateOrUpdateRunJob(clientset kubernetes.Interface, name, namespace, scrip
             log.Printf("Failed to create Job: %v", err)
             return "", err
         }
+        log.Println("Job created successfully.")
+        return jobName, nil
     }
-
-    log.Println("Job created or updated successfully.")
-    return jobName, nil
 }
 
 // WaitForJobCompletion waits for the job to complete and retrieves the Terraform output from the associated pod.
