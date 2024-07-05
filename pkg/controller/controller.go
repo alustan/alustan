@@ -82,11 +82,9 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	var observed schematypes.SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
-	 
-	   response := gin.H{"body": err.Error()}
-	   r.Writer.Header().Set("Content-Type", "application/json")
-	   r.JSON(http.StatusBadRequest, response)
-		
+		response := gin.H{"body": err.Error()}
+		r.Writer.Header().Set("Content-Type", "application/json")
+		r.JSON(http.StatusBadRequest, response)
 		return
 	}
 	defer func() {
@@ -97,22 +95,30 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	key := fmt.Sprintf("%s/%s", observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 
+	// Create a channel to receive the final status
+	statusChan := make(chan schematypes.ParentResourceStatus)
+
 	// Store the observed SyncRequest in the map
 	c.mapMutex.Lock()
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
-	// Wrap the observed SyncRequest
-	wrapped := SyncRequestWrapper{observed}
+	
+  // Enqueue SyncRequest for processing and pass the status channel
+	go func() {
+		status := c.handleSyncRequest(observed)
+		statusChan <- status
+	}()
 
-	// Enqueue the wrapped SyncRequest for processing
-	c.enqueue(&wrapped)
+	// Wait for the final status
+	finalStatus := <-statusChan
 
 	// Return the response in the expected format
-	response := gin.H{"body": "Request enqueued for processing"}
+	response := gin.H{"body": finalStatus}
 	r.Writer.Header().Set("Content-Type", "application/json")
 	r.JSON(http.StatusOK, response)
 }
+
 
 func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) schematypes.ParentResourceStatus {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
@@ -123,20 +129,39 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) schemat
 		State:   "Progressing",
 		Message: "Starting processing",
 	}
+
 	err := c.updateStatus(observed, initialStatus)
 	if err != nil {
 		log.Printf("Error updating initial status: %v", err)
 		return initialStatus
 	}
 
-	scriptContent, _ := terraform.GetScriptContent(observed, c.updateStatus)
-	
+	scriptContent, scriptContentStatus := terraform.GetScriptContent(observed)
+	if scriptContentStatus.State == "Error" {
+		finalStatus := scriptContentStatus
+		c.updateStatus(observed, finalStatus)
+		return finalStatus
+	}
 
-	taggedImageName, _ := registry.GetTaggedImageName(observed, scriptContent, c.clientset, c.updateStatus)
-	
+	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.clientset)
+	if taggedImageStatus.State == "Error" {
+		finalStatus := taggedImageStatus
+		c.updateStatus(observed, finalStatus)
+		return finalStatus
+	}
+
 	log.Printf("taggedImageName: %v", taggedImageName)
-	return terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars, c.updateStatus)
+
+	finalStatus := terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+
+	err = c.updateStatus(observed, finalStatus)
+	if err != nil {
+		log.Printf("Error updating final status: %v", err)
+	}
+
+	return finalStatus
 }
+
 
 func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
 	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
