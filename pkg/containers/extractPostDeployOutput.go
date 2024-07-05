@@ -5,52 +5,44 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	CoreV1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // ExtractPostDeployOutput retrieves and parses the outputs from a pod's log
-func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, jobName string) (map[string]interface{}, error) {
+func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
 	for {
-        // Retrieve the current state of the job
-        job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
-        if err != nil {
-            return nil, err
-        }
-        // Check if the job has succeeded
-        if job.Status.Succeeded > 0 {
-            break
-        }
-        // Check if the job has failed
-        if job.Status.Failed > 0 {
-            return nil, fmt.Errorf("job %s failed", jobName)
-        }
-        // Sleep for 1 minute before checking again
-        time.Sleep(1 * time.Minute)
-    }
+		// Retrieve the current state of the pod
+		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
 
-	// List all pods with a label matching the job name
-    podList, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
-        LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-    })
-    if err != nil {
-        return nil, err
-    }
+		// Log the current pod phase
+		log.Printf("Pod %s is in phase %s", podName, pod.Status.Phase)
 
-    // Ensure there is at least one pod associated with the job
-    if len(podList.Items) == 0 {
-        return nil, fmt.Errorf("no pods found for job %s", jobName)
-    }
+		// Check if the pod has succeeded
+		if pod.Status.Phase == CoreV1.PodSucceeded {
+			log.Printf("Pod %s has succeeded", podName)
+			break
+		}
 
-    // Retrieve the name of the first pod in the list
-    podName := podList.Items[0].Name
+		// Check if the pod has failed
+		if pod.Status.Phase == CoreV1.PodFailed {
+			log.Printf("Pod %s has failed", podName)
+			return nil, fmt.Errorf("pod %s failed", podName)
+		}
 
+		// Sleep for 1 minute before checking again
+		time.Sleep(1 * time.Minute)
+	}
 
 	// Retrieve the pod logs
-	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{})
+	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &CoreV1.PodLogOptions{})
 	logs, err := req.Stream(context.Background())
 	if err != nil {
 		return nil, err
