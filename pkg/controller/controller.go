@@ -103,6 +103,16 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
+	// Check if the CRD has changed before processing
+	if !c.IsCRDChanged(observed) {
+		finalStatus := schematypes.ParentResourceStatus{
+			State:   "Unchanged",
+			Message: "No changes detected in the CRD",
+		}
+		r.Writer.Header().Set("Content-Type", "application/json")
+		r.JSON(http.StatusOK, gin.H{"body": finalStatus})
+		return
+	}
 	// Enqueue SyncRequest for processing and pass the status channel
 	go func() {
 		status, err := c.handleSyncRequest(observed)
@@ -123,7 +133,10 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 		r.JSON(http.StatusBadRequest, gin.H{"body": finalStatus})
 		return
 	}
-
+    
+	// Update the cache as the CRD has changed
+	c.UpdateCache(observed)
+	
 	// Return the response in the expected format
 	response := gin.H{"body": finalStatus}
 	r.Writer.Header().Set("Content-Type", "application/json")
