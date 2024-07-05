@@ -10,7 +10,7 @@
 
 - Free to design what constitutes your deploy script instead of simply terraform plan and apply
 
-- Ability to write postDeploy script that can perform any requested action and store the output in crd status field
+- Ability to write postDeploy script that can perform any requested action and store the output in custom resource status field
 
 - Intentionally outsourced the packaging of the IAC OCI image to accomodate for different cloud services. [base image sample](./examples/Dockerfile) 
 
@@ -18,7 +18,7 @@
 
 > The default `sync interval` can be changed in the helm values file
 
-> If you are using a gitops delivery tool such as Argocd or fluxcd. It will continue to reconcile the crd manifests as always. However to avoid conflict with the controller `sync interval` the reconciliation is processed when a drift in crd is noted or if argocd/fluxcd is trying to sync a new crd manifest
+> If you are using a gitops delivery tool such as Argocd or fluxcd. It will continue to reconcile the custom resource manifests as always. However to avoid conflict with the controller `sync interval` the reconciliation is processed when drift in custom resources are noted or if argocd/fluxcd is trying to sync a new CR manifest
 
 > **Note that the infrastructure drift detection and reconciliation is handled directly by the controller**
 
@@ -146,7 +146,7 @@ variables:
 
 - This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
 
-> The `destroy` script should be `omitted` if when CRD is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
+> The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
 **Sample [deploy](https://github.com/alustan/infrastructure) and [destroy](https://github.com/alustan/infrastructure) script in GO**
 
@@ -159,7 +159,7 @@ scripts:
 ```
 - `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
 
-> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the CRD `postDeployOutput` status field.
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
 
 > The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
 
