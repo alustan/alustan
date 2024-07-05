@@ -13,18 +13,19 @@ import (
 
 	"github.com/gin-gonic/gin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+
 	kubernetespkg "github.com/alustan/pkg/kubernetes"
+	"github.com/alustan/pkg/registry"
 	"github.com/alustan/pkg/schematypes"
 	"github.com/alustan/pkg/terraform"
-	"github.com/alustan/pkg/registry"
 	"github.com/alustan/pkg/util"
-	
 )
 
 type Controller struct {
@@ -37,6 +38,8 @@ type Controller struct {
 	workqueue    workqueue.RateLimitingInterface
 	observedMap  map[string]schematypes.SyncRequest // Map to store observed SyncRequests
 	mapMutex     sync.Mutex                         // Mutex to protect map access
+	statusMap    map[string]chan schematypes.ParentResourceStatus // Map to store status channels
+	statusMutex  sync.Mutex                                      // Mutex to protect status map access
 }
 
 type SyncRequestWrapper struct {
@@ -56,6 +59,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		Cache:        make(map[string]string),       // Initialize cache
 		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
 		observedMap:  make(map[string]schematypes.SyncRequest), // Initialize observed map
+		statusMap:    make(map[string]chan schematypes.ParentResourceStatus), // Initialize status map
 	}
 }
 
@@ -98,6 +102,11 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	// Create a channel to receive the final status
 	statusChan := make(chan schematypes.ParentResourceStatus)
 
+	// Store the status channel in the map
+	c.statusMutex.Lock()
+	c.statusMap[key] = statusChan
+	c.statusMutex.Unlock()
+
 	// Store the observed SyncRequest in the map
 	c.mapMutex.Lock()
 	c.observedMap[key] = observed
@@ -113,19 +122,17 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 		r.JSON(http.StatusOK, gin.H{"body": finalStatus})
 		return
 	}
-	// Enqueue SyncRequest for processing and pass the status channel
-	go func() {
-		status, err := c.handleSyncRequest(observed)
-		if err != nil {
-			log.Printf("Error handling sync request: %v", err)
-			statusChan <- status
-			return
-		}
-		statusChan <- status
-	}()
+
+	// Enqueue SyncRequest for processing
+	c.enqueue(key)
 
 	// Wait for the final status
 	finalStatus := <-statusChan
+
+	// Clean up the status channel map
+	c.statusMutex.Lock()
+	delete(c.statusMap, key)
+	c.statusMutex.Unlock()
 
 	// Check for error in the status and send an appropriate HTTP response
 	if finalStatus.State == "Error" {
@@ -133,10 +140,10 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 		r.JSON(http.StatusBadRequest, gin.H{"body": finalStatus})
 		return
 	}
-    
+
 	// Update the cache as the CRD has changed
 	c.UpdateCache(observed)
-	
+
 	// Return the response in the expected format
 	response := gin.H{"body": finalStatus}
 	r.Writer.Header().Set("Content-Type", "application/json")
@@ -153,7 +160,7 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 		Message: "Starting processing",
 	}
 
-    // Handle script content
+	// Handle script content
 	scriptContent, scriptContentStatus := terraform.GetScriptContent(observed)
 	commonStatus = mergeStatuses(commonStatus, scriptContentStatus)
 	if scriptContentStatus.State == "Error" {
@@ -164,7 +171,7 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.clientset)
 	commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
 	if taggedImageStatus.State == "Error" {
-	  return commonStatus, fmt.Errorf("error getting tagged image name")
+		return commonStatus, fmt.Errorf("error getting tagged image name")
 	}
 
 	log.Printf("taggedImageName: %v", taggedImageName)
@@ -172,11 +179,10 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 	// Handle ExecuteTerraform
 	execTerraformStatus := terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 	commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
-    
+
 	if execTerraformStatus.State == "Error" {
 		return commonStatus, fmt.Errorf("error executing terraform")
-	  }
-	
+	}
 
 	return commonStatus, nil
 }
@@ -255,7 +261,6 @@ func mergeStatuses(baseStatus, newStatus schematypes.ParentResourceStatus) schem
 	return baseStatus
 }
 
-
 func (c *Controller) enqueue(obj interface{}) {
 	var key string
 	var err error
@@ -264,22 +269,58 @@ func (c *Controller) enqueue(obj interface{}) {
 	case schematypes.SyncRequest:
 		wrapped := SyncRequestWrapper{o}
 		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
-	case *SyncRequestWrapper:
-		key, err = cache.MetaNamespaceKeyFunc(o)
 	case string:
 		key = o
-	default:
-		log.Printf("Unsupported object type passed to enqueue: %T", obj)
-		return
 	}
 
 	if err != nil {
-		log.Printf("Error creating key for object: %v", err)
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object: %v, %w", obj, err))
 		return
 	}
-	c.workqueue.Add(key)
+
+	c.workqueue.AddRateLimited(key)
 }
 
+
+func (c *Controller) runWorker() {
+	for c.processNextWorkItem() {
+	}
+}
+
+func (c *Controller) processNextWorkItem() bool {
+	obj, shutdown := c.workqueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer c.workqueue.Done(obj)
+		var key string
+		var ok bool
+
+		if key, ok = obj.(string); !ok {
+			c.workqueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %T", obj))
+			return nil
+		}
+
+		if err := c.syncHandler(key); err != nil {
+			c.workqueue.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		}
+
+		c.workqueue.Forget(obj)
+		log.Printf("Successfully synced '%s'", key)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+
+	return true
+}
 
 func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
 	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
@@ -289,77 +330,41 @@ func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schem
 	return err
 }
 
-func (c *Controller) runWorker() {
-	for c.processNextItem() {
-	}
-}
 
-func (c *Controller) processNextItem() bool {
-	key, shutdown := c.workqueue.Get()
-	if shutdown {
-		return false
-	}
-	defer c.workqueue.Done(key)
+func (c *Controller) syncHandler(key string) error {
+	// Retrieve the observed SyncRequest from the map
+	c.mapMutex.Lock()
+	observed, exists := c.observedMap[key]
+	c.mapMutex.Unlock()
 
-	observed := c.getObservedFromKey(key.(string))
-	if isNilSyncRequest(observed) {
-		log.Printf("SyncRequest not found for key: %s", key)
-		c.workqueue.Forget(key)
-		return true
+	if !exists {
+		return fmt.Errorf("no observed SyncRequest found for key %s", key)
 	}
 
-	log.Printf("Processing item with key: %s", key)
-
-	status, err := c.handleSyncRequest(observed)
+	// Process the SyncRequest
+	finalStatus, err := c.handleSyncRequest(observed)
 	if err != nil {
-		log.Printf("Error handling sync request: %v", err)
-		// Update status to reflect the error
-		updateErr := c.updateStatus(observed, status)
+		finalStatus.State = "Error"
+		finalStatus.Message = err.Error()
+	}
+
+	updateErr := c.updateStatus(observed, finalStatus)
 		if updateErr != nil {
 			log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
 		}
-		// Re-enqueue the item for further processing
-		c.workqueue.AddRateLimited(key)
-		return true
+
+	// Send the final status through the status channel
+	c.statusMutex.Lock()
+	statusChan, exists := c.statusMap[key]
+	c.statusMutex.Unlock()
+
+	if exists {
+		statusChan <- finalStatus
 	}
 
-	// Remove the item from the workqueue
-	c.workqueue.Forget(key)
-
-	// Update the status in Kubernetes
-	updateErr := c.updateStatus(observed, status)
-	if updateErr != nil {
-		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
-		// Re-enqueue the item if status update fails
-		c.workqueue.AddRateLimited(key)
-		return true
-	}
-
-	// Update the cache if the CRD has changed
-	if c.IsCRDChanged(observed) {
-		c.UpdateCache(observed)
-	}
-
-	log.Printf("Successfully processed item with key: %s", key)
-	return true
+	return nil
 }
 
-
-func isNilSyncRequest(observed schematypes.SyncRequest) bool {
-	return observed.Parent.Metadata.Name == "" && observed.Parent.Metadata.Namespace == ""
-}
-
-func (c *Controller) getObservedFromKey(key string) schematypes.SyncRequest {
-	c.mapMutex.Lock()
-	defer c.mapMutex.Unlock()
-
-	observed, exists := c.observedMap[key]
-	if !exists {
-		log.Printf("SyncRequest not found for key: %s", key)
-		return schematypes.SyncRequest{}
-	}
-	return observed
-}
 
 func (c *Controller) Reconcile(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(c.syncInterval)
