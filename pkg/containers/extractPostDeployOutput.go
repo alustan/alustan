@@ -13,21 +13,41 @@ import (
 )
 
 // ExtractPostDeployOutput retrieves and parses the outputs from a pod's log
-func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
-	// Wait for the pod to complete
+func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, jobName string) (map[string]interface{}, error) {
 	for {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		if pod.Status.Phase == corev1.PodSucceeded {
-			break
-		}
-		if pod.Status.Phase == corev1.PodFailed {
-			return nil, fmt.Errorf("pod %s failed", podName)
-		}
-		time.Sleep(1 * time.Minute)
-	}
+        // Retrieve the current state of the job
+        job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
+        if err != nil {
+            return nil, err
+        }
+        // Check if the job has succeeded
+        if job.Status.Succeeded > 0 {
+            break
+        }
+        // Check if the job has failed
+        if job.Status.Failed > 0 {
+            return nil, fmt.Errorf("job %s failed", jobName)
+        }
+        // Sleep for 1 minute before checking again
+        time.Sleep(1 * time.Minute)
+    }
+
+	// List all pods with a label matching the job name
+    podList, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+        LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    // Ensure there is at least one pod associated with the job
+    if len(podList.Items) == 0 {
+        return nil, fmt.Errorf("no pods found for job %s", jobName)
+    }
+
+    // Retrieve the name of the first pod in the list
+    podName := podList.Items[0].Name
+
 
 	// Retrieve the pod logs
 	req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{})

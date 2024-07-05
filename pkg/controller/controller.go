@@ -13,18 +13,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	kubernetespkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/schematypes"
 	"github.com/alustan/pkg/terraform"
 	"github.com/alustan/pkg/registry"
 	"github.com/alustan/pkg/util"
-	kubernetespkg "github.com/alustan/pkg/kubernetes"
+	
 )
 
 type Controller struct {
@@ -103,15 +103,26 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
-	
-  // Enqueue SyncRequest for processing and pass the status channel
+	// Enqueue SyncRequest for processing and pass the status channel
 	go func() {
-		status := c.handleSyncRequest(observed)
+		status, err := c.handleSyncRequest(observed)
+		if err != nil {
+			log.Printf("Error handling sync request: %v", err)
+			statusChan <- status
+			return
+		}
 		statusChan <- status
 	}()
 
 	// Wait for the final status
 	finalStatus := <-statusChan
+
+	// Check for error in the status and send an appropriate HTTP response
+	if finalStatus.State == "Error" {
+		r.Writer.Header().Set("Content-Type", "application/json")
+		r.JSON(http.StatusBadRequest, gin.H{"body": finalStatus})
+		return
+	}
 
 	// Return the response in the expected format
 	response := gin.H{"body": finalStatus}
@@ -119,56 +130,42 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	r.JSON(http.StatusOK, response)
 }
 
-
-func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) schematypes.ParentResourceStatus {
+func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schematypes.ParentResourceStatus, error) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
 	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	initialStatus := schematypes.ParentResourceStatus{
+	commonStatus := schematypes.ParentResourceStatus{
 		State:   "Progressing",
 		Message: "Starting processing",
 	}
 
-	err := c.updateStatus(observed, initialStatus)
-	if err != nil {
-		log.Printf("Error updating initial status: %v", err)
-		return initialStatus
-	}
-
+    // Handle script content
 	scriptContent, scriptContentStatus := terraform.GetScriptContent(observed)
+	commonStatus = mergeStatuses(commonStatus, scriptContentStatus)
 	if scriptContentStatus.State == "Error" {
-		finalStatus := scriptContentStatus
-		c.updateStatus(observed, finalStatus)
-		return finalStatus
+		return commonStatus, fmt.Errorf("error getting script content")
 	}
 
+	// Handle tagged image name
 	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.clientset)
+	commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
 	if taggedImageStatus.State == "Error" {
-		finalStatus := taggedImageStatus
-		c.updateStatus(observed, finalStatus)
-		return finalStatus
+	  return commonStatus, fmt.Errorf("error getting tagged image name")
 	}
 
 	log.Printf("taggedImageName: %v", taggedImageName)
 
-	finalStatus := terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+	// Handle ExecuteTerraform
+	execTerraformStatus := terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+	commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
+    
+	if execTerraformStatus.State == "Error" {
+		return commonStatus, fmt.Errorf("error executing terraform")
+	  }
+	
 
-	err = c.updateStatus(observed, finalStatus)
-	if err != nil {
-		log.Printf("Error updating final status: %v", err)
-	}
-
-	return finalStatus
-}
-
-
-func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
-	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
-	if err != nil {
-		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
-	}
-	return err
+	return commonStatus, nil
 }
 
 func (c *Controller) IsCRDChanged(observed schematypes.SyncRequest) bool {
@@ -200,6 +197,52 @@ func HashSpec(spec schematypes.TerraformConfigSpec) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
+func mergeStatuses(baseStatus, newStatus schematypes.ParentResourceStatus) schematypes.ParentResourceStatus {
+	if newStatus.State != "" {
+		baseStatus.State = newStatus.State
+	}
+	if newStatus.Message != "" {
+		baseStatus.Message = newStatus.Message
+	}
+	if newStatus.Output != nil {
+		if baseStatus.Output == nil {
+			baseStatus.Output = make(map[string]interface{})
+		}
+		for k, v := range newStatus.Output {
+			baseStatus.Output[k] = v
+		}
+	}
+	if newStatus.PostDeployOutput != nil {
+		if baseStatus.PostDeployOutput == nil {
+			baseStatus.PostDeployOutput = make(map[string]interface{})
+		}
+		for k, v := range newStatus.PostDeployOutput {
+			baseStatus.PostDeployOutput[k] = v
+		}
+	}
+	if newStatus.IngressURLs != nil {
+		if baseStatus.IngressURLs == nil {
+			baseStatus.IngressURLs = make(map[string]interface{})
+		}
+		for k, v := range newStatus.IngressURLs {
+			baseStatus.IngressURLs[k] = v
+		}
+	}
+	if newStatus.Credentials != nil {
+		if baseStatus.Credentials == nil {
+			baseStatus.Credentials = make(map[string]interface{})
+		}
+		for k, v := range newStatus.Credentials {
+			baseStatus.Credentials[k] = v
+		}
+	}
+	if newStatus.Finalized {
+		baseStatus.Finalized = newStatus.Finalized
+	}
+	return baseStatus
+}
+
+
 func (c *Controller) enqueue(obj interface{}) {
 	var key string
 	var err error
@@ -224,6 +267,15 @@ func (c *Controller) enqueue(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
+
+func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
+	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+	if err != nil {
+		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
+	}
+	return err
+}
+
 func (c *Controller) runWorker() {
 	for c.processNextItem() {
 	}
@@ -236,24 +288,51 @@ func (c *Controller) processNextItem() bool {
 	}
 	defer c.workqueue.Done(key)
 
-	var observed schematypes.SyncRequest
-	observed = c.getObservedFromKey(key.(string))
-	if c.isObservedSyncRequestEmpty(observed) {
-		log.Printf("Error fetching resource for key %s", key)
+	observed := c.getObservedFromKey(key.(string))
+	if isNilSyncRequest(observed) {
+		log.Printf("SyncRequest not found for key: %s", key)
+		c.workqueue.Forget(key)
 		return true
 	}
 
-	if c.IsCRDChanged(observed) {
-		response := c.handleSyncRequest(observed)
-		c.UpdateCache(observed)
-		log.Printf("Processed resource: %+v", response)
+	log.Printf("Processing item with key: %s", key)
+
+	status, err := c.handleSyncRequest(observed)
+	if err != nil {
+		log.Printf("Error handling sync request: %v", err)
+		// Update status to reflect the error
+		updateErr := c.updateStatus(observed, status)
+		if updateErr != nil {
+			log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
+		}
+		// Re-enqueue the item for further processing
+		c.workqueue.AddRateLimited(key)
+		return true
 	}
 
+	// Remove the item from the workqueue
 	c.workqueue.Forget(key)
+
+	// Update the status in Kubernetes
+	updateErr := c.updateStatus(observed, status)
+	if updateErr != nil {
+		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
+		// Re-enqueue the item if status update fails
+		c.workqueue.AddRateLimited(key)
+		return true
+	}
+
+	// Update the cache if the CRD has changed
+	if c.IsCRDChanged(observed) {
+		c.UpdateCache(observed)
+	}
+
+	log.Printf("Successfully processed item with key: %s", key)
 	return true
 }
 
-func (c *Controller) isObservedSyncRequestEmpty(observed schematypes.SyncRequest) bool {
+
+func isNilSyncRequest(observed schematypes.SyncRequest) bool {
 	return observed.Parent.Metadata.Name == "" && observed.Parent.Metadata.Namespace == ""
 }
 
