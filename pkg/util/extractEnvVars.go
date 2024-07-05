@@ -23,7 +23,7 @@ func FormatEnvVars(envVars map[string]string) []string {
 func ErrorResponse(action string, err error) schematypes.ParentResourceStatus {
 	log.Printf("Error %s: %v", action, err)
 	return schematypes.ParentResourceStatus{
-		State:   "error",
+		State:   "Error",
 		Message: fmt.Sprintf("Error %s: %v", action, err),
 	}
 }

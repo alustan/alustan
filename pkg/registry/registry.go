@@ -22,115 +22,72 @@ func GetTaggedImageName(
 	observed schematypes.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
 ) (string, schematypes.ParentResourceStatus) {
+	var status schematypes.ParentResourceStatus
+
 	if observed.Finalizing {
 		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
 		if err != nil {
-			status := util.ErrorResponse("retrieving tagged image name", err)
-			err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			} else {
-				log.Printf("Successfully updated status: %v", status)
-			}
+			status = util.ErrorResponse("retrieving tagged image name", err)
 			return "", status
 		}
-		return taggedImageName, schematypes.ParentResourceStatus{}
-	} else {
-		taggedImageName, status := handleContainerRegistry(observed, scriptContent, clientset, updateStatus)
-		if status.State != "" {
-			return "", status
-		}
-		return taggedImageName, schematypes.ParentResourceStatus{}
+		return taggedImageName, status
 	}
+
+	taggedImageName, status := handleContainerRegistry(observed, scriptContent, clientset)
+	return taggedImageName, status
 }
 
 func handleContainerRegistry(
 	observed schematypes.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
 ) (string, schematypes.ParentResourceStatus) {
+	var status schematypes.ParentResourceStatus
+
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {
 		log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
-		status := util.ErrorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
 		return "", status
 	}
 
 	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
 	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
 	if err != nil {
-		status := util.ErrorResponse("creating Docker config secret", err)
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("creating Docker config secret", err)
 		return "", status
 	}
 
 	provider := observed.Parent.Spec.ContainerRegistry.Provider
 	registryClient, err := getRegistryClient(provider, token)
 	if err != nil {
-		status := util.ErrorResponse("creating registry client", err)
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("creating registry client", err)
 		return "", status
 	}
 
 	image := observed.Parent.Spec.ContainerRegistry.ImageName
 	tags, err := registryClient.GetTags(image)
 	if err != nil {
-		status := util.ErrorResponse("fetching image tags", err)
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("fetching image tags", err)
 		return "", status
 	}
 
 	semanticVersion := observed.Parent.Spec.ContainerRegistry.SemanticVersion
 	latestTag, err := getLatestTag(tags, semanticVersion)
 	if err != nil {
-		status := util.ErrorResponse("determining latest image tag", err)
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("determining latest image tag", err)
 		return "", status
 	}
 
 	taggedImageName := fmt.Sprintf("%s:%s", image, latestTag)
 	err = updateTaggedImageConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, taggedImageName)
 	if err != nil {
-		status := util.ErrorResponse("updating image tag in configmap", err)
-		err := updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		} else {
-			log.Printf("Successfully updated status: %v", status)
-		}
+		status = util.ErrorResponse("updating image tag in configmap", err)
 		return "", status
 	}
 
-	return taggedImageName, schematypes.ParentResourceStatus{}
+	return taggedImageName, status
 }
 
 func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface, error) {
@@ -146,7 +103,7 @@ func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface
 
 func getLatestTag(tags []string, semanticVersion string) (string, error) {
 	constraint, err := semver.NewConstraint(semanticVersion)
-	if (err != nil) {
+	if err != nil {
 		return "", fmt.Errorf("error parsing semantic version constraint: %w", err)
 	}
 

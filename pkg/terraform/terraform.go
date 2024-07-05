@@ -14,11 +14,7 @@ import (
 	"github.com/alustan/pkg/schematypes"
 )
 
-
-func GetScriptContent(
-	observed schematypes.SyncRequest,
-	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
-) (string, schematypes.ParentResourceStatus) {
+func GetScriptContent(observed schematypes.SyncRequest) (string, schematypes.ParentResourceStatus) {
 	var scriptContent string
 	var status schematypes.ParentResourceStatus
 
@@ -31,11 +27,7 @@ func GetScriptContent(
 	} else {
 		scriptContent = observed.Parent.Spec.Scripts.Deploy
 		if scriptContent == "" {
-			status := util.ErrorResponse("executing script", fmt.Errorf("deploy script is missing"))
-			err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			}
+			status = util.ErrorResponse("executing script", fmt.Errorf("deploy script is missing"))
 			return "", status
 		}
 	}
@@ -48,109 +40,67 @@ func ExecuteTerraform(
 	observed schematypes.SyncRequest,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
-	updateStatus func(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error,
 ) schematypes.ParentResourceStatus {
 
 	var status schematypes.ParentResourceStatus
 
 	if observed.Finalizing {
-		err := updateStatus(observed, schematypes.ParentResourceStatus{
+		status = schematypes.ParentResourceStatus{
 			State:   "Progressing",
 			Message: "Running Terraform Destroy",
-		})
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
 		}
 
 		status = runDestroy(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
-		err = updateStatus(observed, status)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
-		}
-
 		if status.State == "Success" {
-			finalStatus := schematypes.ParentResourceStatus{
+			status = schematypes.ParentResourceStatus{
 				State:     "Completed",
 				Message:   "Destroy process completed successfully",
 				Finalized: true,
 			}
-
-			err = updateStatus(observed, finalStatus)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			}
-			return finalStatus
 		}
 
 		return status
 	}
 
-	err := updateStatus(observed, schematypes.ParentResourceStatus{
+	status = schematypes.ParentResourceStatus{
 		State:   "Progressing",
 		Message: "Running Terraform Apply",
-	})
-	if err != nil {
-		log.Printf("Failed to update status: %v", err)
 	}
 
 	status = runApply(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
-
-	err = updateStatus(observed, status)
-	if err != nil {
-		log.Printf("Failed to update status: %v", err)
-	}
 
 	if status.State == "Failed" {
 		return status
 	}
 
 	if observed.Parent.Spec.PostDeploy.Script != "" {
-		err := updateStatus(observed, schematypes.ParentResourceStatus{
+		status = schematypes.ParentResourceStatus{
 			State:   "Progressing",
 			Message: "Running postDeploy script",
-		})
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
 		}
 
 		postDeployOutput, err := runPostDeploy(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, observed.Parent.Spec.PostDeploy, envVars, taggedImageName, secretName)
 		if err != nil {
-			status := util.ErrorResponse("executing postDeploy script", err)
-
-			err := updateStatus(observed, status)
-			if err != nil {
-				log.Printf("Failed to update status: %v", err)
-			}
+			status = util.ErrorResponse("executing postDeploy script", err)
 			return status
 		}
 
-		finalStatus := schematypes.ParentResourceStatus{
+		status = schematypes.ParentResourceStatus{
 			State:            "Completed",
 			Message:          "Processing completed successfully",
 			PostDeployOutput: postDeployOutput,
 		}
-
-		err = updateStatus(observed, finalStatus)
-		if err != nil {
-			log.Printf("Failed to update status: %v", err)
+	} else {
+		status = schematypes.ParentResourceStatus{
+			State:   "Completed",
+			Message: "Processing completed successfully",
 		}
-
-		return finalStatus
 	}
 
-	finalStatus := schematypes.ParentResourceStatus{
-		State:   "Completed",
-		Message: "Processing completed successfully",
-	}
-
-	err = updateStatus(observed, finalStatus)
-	if err != nil {
-		log.Printf("Failed to update status: %v", err)
-	}
-
-	return finalStatus
+	return status
 }
+
 
 func runApply(
 	clientset kubernetes.Interface,
@@ -185,14 +135,12 @@ func runApply(
 		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
 		return status
 	}
-	
+
 	output := make(map[string]interface{})
 	for key, value := range outputs {
 		output[key] = value
 	}
 	status.Output = output
-
-	
 
 	ingressURLs, err := kubernetesPkg.GetAllIngressURLs(clientset)
 	if err != nil {
@@ -200,12 +148,12 @@ func runApply(
 		status.Message = fmt.Sprintf("Error retrieving Ingress URLs: %v", err)
 		return status
 	}
+
 	ingress := make(map[string]interface{})
-		for key, value := range ingressURLs {
-			ingress[key] = value
-		}
-     status.IngressURLs = ingress
-	
+	for key, value := range ingressURLs {
+		ingress[key] = value
+	}
+	status.IngressURLs = ingress
 
 	credentials, err := kubernetesPkg.FetchCredentials(clientset)
 	if err != nil {
@@ -213,6 +161,7 @@ func runApply(
 		status.Message = fmt.Sprintf("Error retrieving credentials: %v", err)
 		return status
 	}
+
 	creds := map[string]interface{}{
 		"ArgoCDUsername":  credentials.ArgoCDUsername,
 		"ArgoCDPassword":  credentials.ArgoCDPassword,
@@ -220,7 +169,6 @@ func runApply(
 		"GrafanaPassword": credentials.GrafanaPassword,
 	}
 	status.Credentials = creds
-	
 
 	return status
 }
