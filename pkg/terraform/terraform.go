@@ -116,7 +116,7 @@ func runApply(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		podName, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		podName, terraformErr = containers.CreateOrUpdateRunJob(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -129,7 +129,7 @@ func runApply(
 		return status
 	}
 
-	outputs, err := containers.WaitForPodCompletion(clientset, observed.Parent.Metadata.Namespace, podName)
+	outputs, err := containers.WaitForJobCompletion(clientset, observed.Parent.Metadata.Namespace, podName)
 	if err != nil {
 		status.State = "Failed"
 		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
@@ -192,7 +192,7 @@ func runDestroy(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateRunPod(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
+		_, terraformErr = containers.CreateOrUpdateRunJob(clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
 		return terraformErr
 	})
 
@@ -232,7 +232,7 @@ func runPostDeploy(
 
 	fmt.Println("Command:", command)
 
-	podName, err := containers.CreateRunPod(clientset, name, namespace, command, envVars, image, secretName, "postdeploy")
+	podName, err := containers.CreateOrUpdateRunJob(clientset, name, namespace, command, envVars, image, secretName, "postdeploy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create post-deploy pod: %v", err)
 	}
