@@ -10,20 +10,17 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/kubernetes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
+
 
 // CreateOrUpdateRunPod creates or updates a Kubernetes Pod that runs a script with specified environment variables and image.
 func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
 	identifier := fmt.Sprintf("%s-%s", name, service)
-	
-
-	// Generate a consistent pod name
 	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, service)
 
-	// Generate the environment variables
+	// Generate environment variables
 	env := []v1.EnvVar{}
 	for key, value := range envVars {
 		env = append(env, v1.EnvVar{
@@ -59,7 +56,7 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 	}
 
 	// Define the pod spec
-	newPodSpec := v1.PodSpec{
+	podSpec := v1.PodSpec{
 		Containers: []v1.Container{
 			{
 				Name:            "terraform",
@@ -90,30 +87,8 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 		},
 	}
 
-	// Check for existing pods with the same name
-	existingPod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-	if err == nil {
-		// If the existing pod spec differs from the new spec, delete and recreate the pod
-		if !equality.Semantic.DeepEqual(existingPod.Spec, newPodSpec) {
-			log.Printf("Existing Pod with name %s found. Pod spec has changed. Deleting and recreating.", podName)
-
-			// Delete the existing pod
-			err := clientset.CoreV1().Pods(namespace).Delete(context.Background(), existingPod.Name, metav1.DeleteOptions{})
-			if err != nil {
-				log.Printf("Failed to delete Pod: %v", err)
-				return "", err
-			}
-			log.Printf("Deleted Pod: %s", existingPod.Name)
-		} else {
-			log.Printf("Existing Pod with name %s found. Pod spec has not changed.", podName)
-			return podName, nil
-		}
-	} else if !apierrors.IsNotFound(err) {
-		return "", err
-	}
-
+	// Try to create the pod
 	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
-
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
@@ -121,18 +96,58 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 				"apprun": identifier,
 			},
 		},
-		Spec: newPodSpec,
+		Spec: podSpec,
 	}
 
-	log.Println("Creating new Pod...")
-	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
-	if err != nil {
-		log.Printf("Failed to create Pod: %v", err)
-		return "", err
+	_, err := clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err == nil {
+		log.Println("Pod created successfully.")
+		return podName, nil
 	}
-	log.Println("Pod created successfully.")
-	return podName, nil
+
+	// If the pod already exists, remove finalizers, delete and recreate the pod
+	if apierrors.IsAlreadyExists(err) {
+		log.Printf("Pod %s already exists. Removing finalizers and recreating.", podName)
+
+		existingPod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			log.Printf("Failed to get existing Pod: %v", err)
+			return "", err
+		}
+
+		// Remove finalizers if any
+		if len(existingPod.ObjectMeta.Finalizers) > 0 {
+			existingPod.ObjectMeta.Finalizers = nil
+			_, err = clientset.CoreV1().Pods(namespace).Update(context.Background(), existingPod, metav1.UpdateOptions{})
+			if err != nil {
+				log.Printf("Failed to remove finalizers from Pod: %v", err)
+				return "", err
+			}
+			log.Printf("Removed finalizers from Pod: %s", existingPod.Name)
+		}
+
+		// Delete the existing pod
+		err = clientset.CoreV1().Pods(namespace).Delete(context.Background(), existingPod.Name, metav1.DeleteOptions{})
+		if err != nil {
+			log.Printf("Failed to delete Pod: %v", err)
+			return "", err
+		}
+		log.Printf("Deleted Pod: %s", existingPod.Name)
+
+		// Recreate the pod with the new spec
+		_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		if err != nil {
+			log.Printf("Failed to create Pod: %v", err)
+			return "", err
+		}
+		log.Println("Pod created successfully.")
+		return podName, nil
+	}
+
+	log.Printf("Failed to create Pod: %v", err)
+	return "", err
 }
+
 
 // WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output from the associated pod.
 func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName string) (map[string]string, error) {
