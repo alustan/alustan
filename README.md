@@ -236,7 +236,7 @@ postDeployOutput:
 
 - `status field` The Status field consists of the followings:
 
-> **`state`: Current state - `Progressing` `error` `Success` `Completed`**
+> **`state`: Current state - `Progressing` `Error` `Success` `Completed`**
 
 > **`message`: Detailed message regarding current state**
 

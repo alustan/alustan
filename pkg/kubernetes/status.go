@@ -45,6 +45,14 @@ func UpdateStatus(dynamicClient dynamic.Interface, namespace, name string, statu
             tf.Object["status"] = make(map[string]interface{})
         }
 
+        // Initialize missing status fields
+        statusFields := []string{"Credentials", "Finalized", "IngressURLs", "Message", "Output", "PostDeployOutput", "State"}
+        for _, field := range statusFields {
+            if _, exists := tf.Object["status"].(map[string]interface{})[field]; !exists {
+                tf.Object["status"].(map[string]interface{})[field] = nil
+            }
+        }
+
         // Update the status fields
         for k, v := range statusMap {
             tf.Object["status"].(map[string]interface{})[k] = v
