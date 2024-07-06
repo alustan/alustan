@@ -5,13 +5,11 @@ import (
 	"fmt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	
 )
 
-
 // GetAllIngressURLs retrieves URLs of all Ingress resources in all namespaces.
-func GetAllIngressURLs(clientset  kubernetes.Interface) (map[string][]string, error) {
-	ingressURLs := make(map[string][]string)
+func GetAllIngressURLs(clientset kubernetes.Interface) (map[string]interface{}, error) {
+	ingressURLs := make(map[string]interface{})
 
 	namespaces, err := clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -24,12 +22,16 @@ func GetAllIngressURLs(clientset  kubernetes.Interface) (map[string][]string, er
 			return nil, fmt.Errorf("failed to list Ingress resources in namespace %s: %v", namespace.Name, err)
 		}
 
+		var namespaceIngressURLs []interface{}
+
 		for _, ingress := range ingresses.Items {
 			if len(ingress.Spec.Rules) > 0 {
 				ingressURL := fmt.Sprintf("https://%s", ingress.Spec.Rules[0].Host)
-				ingressURLs[namespace.Name] = append(ingressURLs[namespace.Name], ingressURL)
+				namespaceIngressURLs = append(namespaceIngressURLs, ingressURL)
 			}
 		}
+
+		ingressURLs[namespace.Name] = namespaceIngressURLs
 	}
 
 	return ingressURLs, nil

@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Credentials struct holds ArgoCD and Grafana credentials.
 type Credentials struct {
 	ArgoCDUsername  string `json:"argocdUsername"`
 	ArgoCDPassword  string `json:"argocdPassword"`
@@ -16,7 +17,8 @@ type Credentials struct {
 	GrafanaPassword string `json:"grafanaPassword"`
 }
 
-func FetchCredentials(clientset kubernetes.Interface) (Credentials, error) {
+// FetchCredentials retrieves ArgoCD and Grafana credentials from the Kubernetes cluster.
+func FetchCredentials(clientset kubernetes.Interface) (map[string]interface{}, error) {
 	credentials := Credentials{
 		ArgoCDUsername:  "admin",
 		GrafanaUsername: "admin",
@@ -26,13 +28,13 @@ func FetchCredentials(clientset kubernetes.Interface) (Credentials, error) {
 	argoSecret, err := clientset.CoreV1().Secrets("argocd").Get(context.Background(), "argocd-secret", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return Credentials{}, fmt.Errorf("failed to get ArgoCD secret: %v", err)
+			return nil, fmt.Errorf("failed to get ArgoCD secret: %v", err)
 		}
 	} else {
 		argoCDPasswordEncoded := argoSecret.Data["admin.password"]
 		argoCDPassword, err := base64.StdEncoding.DecodeString(string(argoCDPasswordEncoded))
 		if err != nil {
-			return Credentials{}, fmt.Errorf("failed to decode ArgoCD password: %v", err)
+			return nil, fmt.Errorf("failed to decode ArgoCD password: %v", err)
 		}
 		credentials.ArgoCDPassword = string(argoCDPassword)
 	}
@@ -41,17 +43,24 @@ func FetchCredentials(clientset kubernetes.Interface) (Credentials, error) {
 	grafanaSecret, err := clientset.CoreV1().Secrets("monitoring").Get(context.Background(), "grafana", metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return Credentials{}, fmt.Errorf("failed to get Grafana secret: %v", err)
+			return nil, fmt.Errorf("failed to get Grafana secret: %v", err)
 		}
 	} else {
 		grafanaPasswordEncoded := grafanaSecret.Data["admin-password"]
 		grafanaPassword, err := base64.StdEncoding.DecodeString(string(grafanaPasswordEncoded))
 		if err != nil {
-			return Credentials{}, fmt.Errorf("failed to decode Grafana password: %v", err)
+			return nil, fmt.Errorf("failed to decode Grafana password: %v", err)
 		}
 		credentials.GrafanaPassword = string(grafanaPassword)
 	}
 
-	// Return the credentials
-	return credentials, nil
+	// Return the credentials as a map
+	credentialsMap := map[string]interface{}{
+		"argocdUsername":  credentials.ArgoCDUsername,
+		"argocdPassword":  credentials.ArgoCDPassword,
+		"grafanaUsername": credentials.GrafanaUsername,
+		"grafanaPassword": credentials.GrafanaPassword,
+	}
+
+	return credentialsMap, nil
 }
