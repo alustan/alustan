@@ -136,11 +136,7 @@ func runApply(
 		return status
 	}
 
-	output := make(map[string]interface{})
-	for key, value := range outputs {
-		output[key] = value
-	}
-	status.Output = output
+	status.Output = outputs
 
 	ingressURLs, err := kubernetesPkg.GetAllIngressURLs(clientset)
 	if err != nil {
@@ -149,11 +145,7 @@ func runApply(
 		return status
 	}
 
-	ingress := make(map[string]interface{})
-	for key, value := range ingressURLs {
-		ingress[key] = value
-	}
-	status.IngressURLs = ingress
+	status.IngressURLs = ingressURLs
 
 	credentials, err := kubernetesPkg.FetchCredentials(clientset)
 	if err != nil {
@@ -162,13 +154,7 @@ func runApply(
 		return status
 	}
 
-	creds := map[string]interface{}{
-		"ArgoCDUsername":  credentials.ArgoCDUsername,
-		"ArgoCDPassword":  credentials.ArgoCDPassword,
-		"GrafanaUsername": credentials.GrafanaUsername,
-		"GrafanaPassword": credentials.GrafanaPassword,
-	}
-	status.Credentials = creds
+	status.Credentials = credentials
 
 	return status
 }

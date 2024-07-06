@@ -117,9 +117,18 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Check if the CRD has changed before processing
 	if !c.IsCRDChanged(observed) {
-		
+		finalStatus := schematypes.ParentResourceStatus{
+			State:   "Unchanged",
+			Message: "No changes detected in the CRD",
+		}
+		desired := gin.H{
+			"status":    finalStatus,
+			"finalized": false,
+		}
+		// Log the SyncResponse
+		log.Printf("Sending SyncResponse: %+v", desired)
 		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusOK, gin.H{"body": "No changes detected in the CRD"})
+		r.JSON(http.StatusOK, gin.H{"body": desired})
 		return
 	}
 
@@ -136,9 +145,14 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Check for error in the status and send an appropriate HTTP response
 	if finalStatus.State == "Error" {
-		
+		desired := gin.H{
+			"status":    finalStatus,
+			"finalized": false,
+		}
+		// Log the SyncResponse
+		log.Printf("Sending SyncResponse: %+v", desired)
 		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusBadRequest, gin.H{"body": finalStatus.Message})
+		r.JSON(http.StatusBadRequest, gin.H{"body": desired})
 		return
 	}
 
@@ -150,6 +164,7 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Construct the desired state
 	desired := gin.H{
+		"status":    finalStatus,
 		"finalized": finalized,
 	}
 
@@ -361,10 +376,10 @@ func (c *Controller) syncHandler(key string) error {
 		finalStatus.Message = err.Error()
 	}
 
-	updateErr := c.updateStatus(observed, finalStatus)
-		if updateErr != nil {
-			log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
-		}
+	// updateErr := c.updateStatus(observed, finalStatus)
+	// 	if updateErr != nil {
+	// 		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
+	// 	}
 
 	// Send the final status through the status channel
 	c.statusMutex.Lock()
