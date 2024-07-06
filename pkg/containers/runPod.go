@@ -87,8 +87,7 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 		},
 	}
 
-	// Try to create the pod
-	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
+	// Define the pod object
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
@@ -99,21 +98,11 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 		Spec: podSpec,
 	}
 
-	_, err := clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	// Try to get the existing pod
+	existingPod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err == nil {
-		log.Println("Pod created successfully.")
-		return podName, nil
-	}
-
-	// If the pod already exists, remove finalizers, delete and recreate the pod
-	if apierrors.IsAlreadyExists(err) {
+		// Pod already exists, remove finalizers and delete it
 		log.Printf("Pod %s already exists. Removing finalizers and recreating.", podName)
-
-		existingPod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-		if err != nil {
-			log.Printf("Failed to get existing Pod: %v", err)
-			return "", err
-		}
 
 		// Remove finalizers if any
 		if len(existingPod.ObjectMeta.Finalizers) > 0 {
@@ -133,20 +122,24 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 			return "", err
 		}
 		log.Printf("Deleted Pod: %s", existingPod.Name)
-
-		// Recreate the pod with the new spec
-		_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
-		if err != nil {
-			log.Printf("Failed to create Pod: %v", err)
-			return "", err
-		}
-		log.Println("Pod created successfully.")
-		return podName, nil
+	} else if !apierrors.IsNotFound(err) {
+		// If the error is something other than NotFound, log and return it
+		log.Printf("Failed to get existing Pod: %v", err)
+		return "", err
 	}
 
-	log.Printf("Failed to create Pod: %v", err)
-	return "", err
+	// Create the pod with the new spec
+	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
+	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err != nil {
+		log.Printf("Failed to create Pod: %v", err)
+		return "", err
+	}
+
+	log.Println("Pod created successfully.")
+	return podName, nil
 }
+
 
 
 // WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output from the associated pod.
@@ -223,6 +216,9 @@ func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName str
 			}
 		}
 	}
+
+	// Log the final outputs
+	log.Printf("Final Outputs: %+v", outputs)
 
 	// Return the extracted outputs
 	return outputs, nil
