@@ -118,8 +118,12 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 			State:   "Unchanged",
 			Message: "No changes detected in the CRD",
 		}
+		desired := gin.H{
+			"status":    finalStatus,
+			"finalized": false,
+		}
 		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusOK, gin.H{"body": finalStatus})
+		r.JSON(http.StatusOK, gin.H{"body": desired})
 		return
 	}
 
@@ -136,19 +140,33 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Check for error in the status and send an appropriate HTTP response
 	if finalStatus.State == "Error" {
+		desired := gin.H{
+			"status":    finalStatus,
+			"finalized": false,
+		}
 		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusBadRequest, gin.H{"body": finalStatus})
+		r.JSON(http.StatusBadRequest, gin.H{"body": desired})
 		return
 	}
 
 	// Update the cache as the CRD has changed
 	c.UpdateCache(observed)
 
+	// Extract the finalized field from the status
+	finalized := finalStatus.Finalized
+
+	// Construct the desired state
+	desired := gin.H{
+		"status":    finalStatus,
+		"finalized": finalized,
+	}
+
 	// Return the response in the expected format
-	response := gin.H{"body": finalStatus}
+	response := gin.H{"body": desired}
 	r.Writer.Header().Set("Content-Type", "application/json")
 	r.JSON(http.StatusOK, response)
 }
+
 
 func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schematypes.ParentResourceStatus, error) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)

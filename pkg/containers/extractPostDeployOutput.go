@@ -67,5 +67,8 @@ func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName 
 		return nil, fmt.Errorf("outputs field not found or invalid format")
 	}
 
+	// Log the final outputs
+	log.Printf("Final Outputs: %+v", outputs)
+
 	return outputs, nil
 }
