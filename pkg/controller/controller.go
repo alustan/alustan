@@ -115,22 +115,22 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
-	// Check if the CRD has changed before processing
-	if !c.IsCRDChanged(observed) {
-		finalStatus := schematypes.ParentResourceStatus{
-			State:   "Unchanged",
-			Message: "No changes detected in the CRD",
-		}
-		desired := gin.H{
-			"status":    finalStatus,
-			"finalized": false,
-		}
-		// Log the SyncResponse
-		log.Printf("Sending SyncResponse: %+v", desired)
-		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusOK, gin.H{"body": desired})
-		return
-	}
+	// // Check if the CRD has changed before processing
+	// if !c.IsCRDChanged(observed) {
+	// 	finalStatus := schematypes.ParentResourceStatus{
+	// 		State:   "Unchanged",
+	// 		Message: "No changes detected in the CRD",
+	// 	}
+	// 	desired := gin.H{
+	// 		"status":    finalStatus,
+	// 		"finalized": false,
+	// 	}
+	// 	// Log the SyncResponse
+	// 	log.Printf("Sending SyncResponse: %+v", desired)
+	// 	r.Writer.Header().Set("Content-Type", "application/json")
+	// 	r.JSON(http.StatusOK, gin.H{"body": desired})
+	// 	return
+	// }
 
 	// Enqueue SyncRequest for processing
 	c.enqueue(key)
