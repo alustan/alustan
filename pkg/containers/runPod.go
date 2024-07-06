@@ -193,6 +193,11 @@ func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName str
 
 	// Parse the logs to extract the "Outputs:" section
 	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
 		if strings.HasPrefix(line, "Outputs:") {
 			outputSection = true
 			continue

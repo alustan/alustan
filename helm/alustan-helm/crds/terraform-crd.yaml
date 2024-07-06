@@ -70,5 +70,6 @@ spec:
                 credentials:
                   type: object
                   additionalProperties: true
+               
       subresources:
         status: {}
