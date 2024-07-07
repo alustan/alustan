@@ -5,7 +5,7 @@ import (
     "log"
     "time"
 
-    "github.com/alustan/pkg/schematypes"
+    "github.com/alustan/api/v1alpha1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
@@ -15,7 +15,7 @@ import (
 )
 
 // UpdateStatus updates the status of a Terraform custom resource.
-func UpdateStatus(dynamicClient dynamic.Interface, namespace, name string, status schematypes.ParentResourceStatus) error {
+func UpdateStatus(dynamicClient dynamic.Interface, namespace, name string, status v1alpha1.ParentResourceStatus) error {
     resource := schema.GroupVersionResource{
         Group:    "alustan.io",
         Version:  "v1alpha1",
@@ -81,7 +81,7 @@ func UpdateStatus(dynamicClient dynamic.Interface, namespace, name string, statu
 }
 
 // toMap converts the status struct to a map.
-func toMap(status schematypes.ParentResourceStatus) (map[string]interface{}, error) {
+func toMap(status v1alpha1.ParentResourceStatus) (map[string]interface{}, error) {
     var statusMap map[string]interface{}
     err := mapstructure.Decode(status, &statusMap)
     if err != nil {

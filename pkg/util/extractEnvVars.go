@@ -5,7 +5,7 @@ import (
 	"log"
 	"fmt"
 
-	"github.com/alustan/pkg/schematypes"
+	"github.com/alustan/api/v1alpha1"
 
 )
 
@@ -20,9 +20,9 @@ func FormatEnvVars(envVars map[string]string) []string {
 	return formattedVars
 }
 
-func ErrorResponse(action string, err error) schematypes.ParentResourceStatus {
+func ErrorResponse(action string, err error) v1alpha1.ParentResourceStatus {
 	log.Printf("Error %s: %v", action, err)
-	return schematypes.ParentResourceStatus{
+	return v1alpha1.ParentResourceStatus{
 		State:   "Error",
 		Message: fmt.Sprintf("Error %s: %v", action, err),
 	}
