@@ -15,18 +15,18 @@ import (
 	"github.com/alustan/pkg/imagetag"
 	"github.com/alustan/pkg/util"
 	containers "github.com/alustan/pkg/containers"
-	"github.com/alustan/pkg/schematypes"
+	"github.com/alustan/api/v1alpha1"
 )
 
 func GetTaggedImageName(
-	observed schematypes.SyncRequest,
+	observed v1alpha1.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-) (string, schematypes.ParentResourceStatus) {
-	var status schematypes.ParentResourceStatus
+) (string, v1alpha1.ParentResourceStatus) {
+	var status v1alpha1.ParentResourceStatus
 
 	if observed.Finalizing {
-		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
+		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name)
 		if err != nil {
 			status = util.ErrorResponse("retrieving tagged image name", err)
 			return "", status
@@ -39,11 +39,11 @@ func GetTaggedImageName(
 }
 
 func handleContainerRegistry(
-	observed schematypes.SyncRequest,
+	observed v1alpha1.SyncRequest,
 	scriptContent string,
 	clientset kubernetes.Interface,
-) (string, schematypes.ParentResourceStatus) {
-	var status schematypes.ParentResourceStatus
+) (string, v1alpha1.ParentResourceStatus) {
+	var status v1alpha1.ParentResourceStatus
 
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {
@@ -52,8 +52,8 @@ func handleContainerRegistry(
 		return "", status
 	}
 
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
-	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
+	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.ObjectMeta.Name)
+	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.Parent.ObjectMeta.Namespace, encodedDockerConfigJSON)
 	if err != nil {
 		status = util.ErrorResponse("creating Docker config secret", err)
 		return "", status
@@ -81,7 +81,7 @@ func handleContainerRegistry(
 	}
 
 	taggedImageName := fmt.Sprintf("%s:%s", image, latestTag)
-	err = updateTaggedImageConfigMap(clientset, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, taggedImageName)
+	err = updateTaggedImageConfigMap(clientset, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name, taggedImageName)
 	if err != nil {
 		status = util.ErrorResponse("updating image tag in configmap", err)
 		return "", status

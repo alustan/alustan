@@ -20,47 +20,51 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	
 
 	kubernetespkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/registry"
-	"github.com/alustan/pkg/schematypes"
+	"github.com/alustan/api/v1alpha1"
 	"github.com/alustan/pkg/terraform"
 	"github.com/alustan/pkg/util"
 )
 
 type Controller struct {
-	clientset    kubernetes.Interface
+	Clientset    kubernetes.Interface
 	dynClient    dynamic.Interface
 	syncInterval time.Duration
 	lastSyncTime time.Time
 	Cache        map[string]string // Cache to store CRD states
 	cacheMutex   sync.Mutex        // Mutex to protect cache access
 	workqueue    workqueue.RateLimitingInterface
-	observedMap  map[string]schematypes.SyncRequest // Map to store observed SyncRequests
+	observedMap  map[string]v1alpha1.SyncRequest // Map to store observed SyncRequests
 	mapMutex     sync.Mutex                         // Mutex to protect map access
-	statusMap    map[string]chan schematypes.ParentResourceStatus // Map to store status channels
+	statusMap    map[string]chan v1alpha1.ParentResourceStatus // Map to store status channels
 	statusMutex  sync.Mutex                                      // Mutex to protect status map access
+	
 }
 
 type SyncRequestWrapper struct {
-	SyncRequest schematypes.SyncRequest
+	SyncRequest v1alpha1.SyncRequest
 }
 
 func (w *SyncRequestWrapper) GetObjectMeta() metav1.Object {
-	return &w.SyncRequest.Parent.Metadata
+	return &w.SyncRequest.Parent.ObjectMeta
 }
 
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
-	return &Controller{
-		clientset:    clientset,
-		dynClient:    dynClient,
-		syncInterval: syncInterval,
-		lastSyncTime: time.Now().Add(-syncInterval), // Initialize to allow immediate first run
-		Cache:        make(map[string]string),       // Initialize cache
-		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
-		observedMap:  make(map[string]schematypes.SyncRequest), // Initialize observed map
-		statusMap:    make(map[string]chan schematypes.ParentResourceStatus), // Initialize status map
-	}
+    ctrl := &Controller{
+        Clientset:    clientset,
+        dynClient:    dynClient,
+        syncInterval: syncInterval,
+        lastSyncTime: time.Now().Add(-syncInterval), // Initialize to allow immediate first run
+        Cache:        make(map[string]string),       // Initialize cache
+        workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
+        observedMap:  make(map[string]v1alpha1.SyncRequest), // Initialize observed map
+        statusMap:    make(map[string]chan v1alpha1.ParentResourceStatus), // Initialize status map
+    }
+
+    return ctrl
 }
 
 func NewInClusterController(syncInterval time.Duration) *Controller {
@@ -83,7 +87,7 @@ func NewInClusterController(syncInterval time.Duration) *Controller {
 }
 
 func (c *Controller) ServeHTTP(r *gin.Context) {
-	var observed schematypes.SyncRequest
+	var observed v1alpha1.SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
 		response := gin.H{"body": err.Error()}
@@ -100,10 +104,10 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	// Log the incoming SyncRequest
 	log.Printf("Received SyncRequest: %+v", observed)
 
-	key := fmt.Sprintf("%s/%s", observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
+	key := fmt.Sprintf("%s/%s", observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name)
 
 	// Create a channel to receive the final status
-	statusChan := make(chan schematypes.ParentResourceStatus)
+	statusChan := make(chan v1alpha1.ParentResourceStatus)
 
 	// Store the status channel in the map
 	c.statusMutex.Lock()
@@ -115,22 +119,30 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	c.observedMap[key] = observed
 	c.mapMutex.Unlock()
 
-	// // Check if the CRD has changed before processing
-	// if !c.IsCRDChanged(observed) {
-	// 	finalStatus := schematypes.ParentResourceStatus{
-	// 		State:   "Unchanged",
-	// 		Message: "No changes detected in the CRD",
-	// 	}
-	// 	desired := gin.H{
-	// 		"status":    finalStatus,
-	// 		"finalized": false,
-	// 	}
-	// 	// Log the SyncResponse
-	// 	log.Printf("Sending SyncResponse: %+v", desired)
-	// 	r.Writer.Header().Set("Content-Type", "application/json")
-	// 	r.JSON(http.StatusOK, gin.H{"body": desired})
-	// 	return
-	// }
+	// Check if the CRD has changed before processing
+	if !c.IsCRDChanged(observed) {
+		c.mapMutex.Lock()
+		existingStatus := c.statusMap[key]
+		c.mapMutex.Unlock()
+		
+		// Enqueue the request if finalizing
+		if observed.Finalizing {
+			c.enqueue(key)
+		} else {
+			// Return the current status if the CRD hasn't changed
+			finalStatus := <-existingStatus
+			desired := v1alpha1.SyncResponse{
+				Status:    finalStatus,
+				Finalized: finalStatus.Finalized,
+			}
+
+			// Log the SyncResponse
+			log.Printf("Sending SyncResponse: %+v", desired)
+			r.Writer.Header().Set("Content-Type", "application/json")
+			r.JSON(http.StatusOK, gin.H{"body": desired})
+			return
+		}
+	}
 
 	// Enqueue SyncRequest for processing
 	c.enqueue(key)
@@ -145,9 +157,9 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	// Check for error in the status and send an appropriate HTTP response
 	if finalStatus.State == "Error" {
-		desired := gin.H{
-			"status":    finalStatus,
-			"finalized": false,
+		desired := v1alpha1.SyncResponse{
+			Status:    finalStatus,
+			Finalized: false,
 		}
 		// Log the SyncResponse
 		log.Printf("Sending SyncResponse: %+v", desired)
@@ -163,9 +175,9 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	finalized := finalStatus.Finalized
 
 	// Construct the desired state
-	desired := gin.H{
-		"status":    finalStatus,
-		"finalized": finalized,
+	desired := v1alpha1.SyncResponse{
+		Status:    finalStatus,
+		Finalized: finalized,
 	}
 
 	// Log the SyncResponse
@@ -178,12 +190,12 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 }
 
 
-func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schematypes.ParentResourceStatus, error) {
+func (c *Controller) handleSyncRequest(observed v1alpha1.SyncRequest) (v1alpha1.ParentResourceStatus, error) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
+	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.ObjectMeta.Name)
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	commonStatus := schematypes.ParentResourceStatus{
+	commonStatus := v1alpha1.ParentResourceStatus{
 		State:   "Progressing",
 		Message: "Starting processing",
 	}
@@ -196,7 +208,7 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 	}
 
 	// Handle tagged image name
-	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.clientset)
+	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.Clientset)
 	commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
 	if taggedImageStatus.State == "Error" {
 		return commonStatus, fmt.Errorf("error getting tagged image name")
@@ -205,7 +217,7 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 	log.Printf("taggedImageName: %v", taggedImageName)
 
 	// Handle ExecuteTerraform
-	execTerraformStatus := terraform.ExecuteTerraform(c.clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+	execTerraformStatus := terraform.ExecuteTerraform(c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 	commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
 
 	if execTerraformStatus.State == "Error" {
@@ -215,25 +227,25 @@ func (c *Controller) handleSyncRequest(observed schematypes.SyncRequest) (schema
 	return commonStatus, nil
 }
 
-func (c *Controller) IsCRDChanged(observed schematypes.SyncRequest) bool {
+func (c *Controller) IsCRDChanged(observed v1alpha1.SyncRequest) bool {
 	c.cacheMutex.Lock()
 	defer c.cacheMutex.Unlock()
 
 	newHash := HashSpec(observed.Parent.Spec)
-	oldHash, exists := c.Cache[observed.Parent.Metadata.Name]
+	oldHash, exists := c.Cache[observed.Parent.ObjectMeta.Name]
 
 	return !exists || newHash != oldHash
 }
 
-func (c *Controller) UpdateCache(observed schematypes.SyncRequest) {
+func (c *Controller) UpdateCache(observed v1alpha1.SyncRequest) {
 	c.cacheMutex.Lock()
 	defer c.cacheMutex.Unlock()
 
 	newHash := HashSpec(observed.Parent.Spec)
-	c.Cache[observed.Parent.Metadata.Name] = newHash
+	c.Cache[observed.Parent.ObjectMeta.Name] = newHash
 }
 
-func HashSpec(spec schematypes.TerraformConfigSpec) string {
+func HashSpec(spec v1alpha1.TerraformConfigSpec) string {
 	hash := sha256.New()
 	data, err := json.Marshal(spec)
 	if err != nil {
@@ -244,49 +256,61 @@ func HashSpec(spec schematypes.TerraformConfigSpec) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func mergeStatuses(baseStatus, newStatus schematypes.ParentResourceStatus) schematypes.ParentResourceStatus {
-	if newStatus.State != "" {
-		baseStatus.State = newStatus.State
-	}
-	if newStatus.Message != "" {
-		baseStatus.Message = newStatus.Message
-	}
-	if newStatus.Output != nil {
-		if baseStatus.Output == nil {
-			baseStatus.Output = make(map[string]interface{})
-		}
-		for k, v := range newStatus.Output {
-			baseStatus.Output[k] = v
-		}
-	}
-	if newStatus.PostDeployOutput != nil {
-		if baseStatus.PostDeployOutput == nil {
-			baseStatus.PostDeployOutput = make(map[string]interface{})
-		}
-		for k, v := range newStatus.PostDeployOutput {
-			baseStatus.PostDeployOutput[k] = v
-		}
-	}
-	if newStatus.IngressURLs != nil {
-		if baseStatus.IngressURLs == nil {
-			baseStatus.IngressURLs = make(map[string]interface{})
-		}
-		for k, v := range newStatus.IngressURLs {
-			baseStatus.IngressURLs[k] = v
-		}
-	}
-	if newStatus.Credentials != nil {
-		if baseStatus.Credentials == nil {
-			baseStatus.Credentials = make(map[string]interface{})
-		}
-		for k, v := range newStatus.Credentials {
-			baseStatus.Credentials[k] = v
-		}
-	}
-	if newStatus.Finalized {
-		baseStatus.Finalized = newStatus.Finalized
-	}
-	return baseStatus
+func mergeStatuses(baseStatus, newStatus v1alpha1.ParentResourceStatus) v1alpha1.ParentResourceStatus {
+    if newStatus.State != "" {
+        baseStatus.State = newStatus.State
+    }
+    if newStatus.Message != "" {
+        baseStatus.Message = newStatus.Message
+    }
+    if newStatus.Output != nil {
+        if baseStatus.Output == nil {
+            baseStatus.Output = make(json.RawMessage, 0) // Initialize as RawMessage
+        }
+        // Convert newStatus.Output to []byte and assign to baseStatus.Output
+        data, err := json.Marshal(newStatus.Output)
+        if err != nil {
+            // Handle error if necessary
+        }
+        baseStatus.Output = json.RawMessage(data)
+    }
+    if newStatus.PostDeployOutput != nil {
+        if baseStatus.PostDeployOutput == nil {
+            baseStatus.PostDeployOutput = make(json.RawMessage, 0) // Initialize as RawMessage
+        }
+        // Convert newStatus.PostDeployOutput to []byte and assign to baseStatus.PostDeployOutput
+        data, err := json.Marshal(newStatus.PostDeployOutput)
+        if err != nil {
+            // Handle error if necessary
+        }
+        baseStatus.PostDeployOutput = json.RawMessage(data)
+    }
+    if newStatus.IngressURLs != nil {
+        if baseStatus.IngressURLs == nil {
+            baseStatus.IngressURLs = make(json.RawMessage, 0) // Initialize as RawMessage
+        }
+        // Convert newStatus.IngressURLs to []byte and assign to baseStatus.IngressURLs
+        data, err := json.Marshal(newStatus.IngressURLs)
+        if err != nil {
+            // Handle error if necessary
+        }
+        baseStatus.IngressURLs = json.RawMessage(data)
+    }
+    if newStatus.Credentials != nil {
+        if baseStatus.Credentials == nil {
+            baseStatus.Credentials = make(json.RawMessage, 0) // Initialize as RawMessage
+        }
+        // Convert newStatus.Credentials to []byte and assign to baseStatus.Credentials
+        data, err := json.Marshal(newStatus.Credentials)
+        if err != nil {
+            // Handle error if necessary
+        }
+        baseStatus.Credentials = json.RawMessage(data)
+    }
+    if newStatus.Finalized {
+        baseStatus.Finalized = newStatus.Finalized
+    }
+    return baseStatus
 }
 
 func (c *Controller) enqueue(obj interface{}) {
@@ -294,7 +318,7 @@ func (c *Controller) enqueue(obj interface{}) {
 	var err error
 
 	switch o := obj.(type) {
-	case schematypes.SyncRequest:
+	case v1alpha1.SyncRequest:
 		wrapped := SyncRequestWrapper{o}
 		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
 	case string:
@@ -350,10 +374,10 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) updateStatus(observed schematypes.SyncRequest, status schematypes.ParentResourceStatus) error {
-	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+func (c *Controller) updateStatus(observed v1alpha1.SyncRequest, status v1alpha1.ParentResourceStatus) error {
+	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name, status)
 	if err != nil {
-		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
+		log.Printf("Error updating status for %s: %v", observed.Parent.ObjectMeta.Name, err)
 	}
 	return err
 }
@@ -378,7 +402,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	// updateErr := c.updateStatus(observed, finalStatus)
 	// 	if updateErr != nil {
-	// 		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, updateErr)
+	// 		log.Printf("Error updating status for %s: %v", observed.Parent.ObjectMeta.Name, updateErr)
 	// 	}
 
 	// Send the final status through the status channel

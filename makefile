@@ -1,27 +1,25 @@
-# Variables
-INFRA_NAME := terraform-controller
-
-
-
-
 # Commands
 GO := go
 
 # Directories
 INFRA_SRC_DIR := ./cmd/controller
-
-
 TEST_DIR := ./test
 
 # Targets
-.PHONY: all build  test setup lint clean 
+.PHONY: all generate-crds build test setup lint clean
+
+all: generate-crds
+
+generate-crds:
+	@echo "+ Generating crds"
+	@$(GO) install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
+	@$(shell $(GO) env GOPATH)/bin/controller-gen +crd +paths="./api/..." +output:crd:stdout > api/v1alpha1/crd.yaml
+
 
 
 ## Build the application
 build:
-	$(GO) build -o bin/$(INFRA_NAME) $(INFRA_SRC_DIR)
-
-
+	$(GO) build -o bin/terraform-controller $(INFRA_SRC_DIR)
 
 ## Run tests
 test:
@@ -38,10 +36,6 @@ lint:
 clean:
 	rm -rf bin/
 
-
-
-
-
 ## Display help message
 help:
 	@echo "Usage: make [target]"
@@ -52,4 +46,5 @@ help:
 	@echo "  lint           Run linting"
 	@echo "  clean          Clean build artifacts"
 	@echo "  setup          setup script before build"
+	@echo "  generate-crds  Generates crds from struct"
 	@echo "  help           Display this help message"

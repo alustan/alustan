@@ -80,58 +80,87 @@ spec:
 status:
   state: "Progressing"
   message: "Starting processing"
-  output: 
-    aws_certificate_arn:   "aws_certificate_arn"
-    service_account_role_arn:  "service_account_role_arn"
-    db_instance_address: "db_instance_address"
-  
-  ingressURLs: 
-    production: 
-     - "https://example-production.com"
-    
-    development: 
-     - "https://example-development.com"
-     - "https://another-example-development.com"
-    
+  output: |
+    {
+      "aws_certificate_arn": "aws_certificate_arn",
+      "service_account_role_arn": "service_account_role_arn",
+      "db_instance_address": "db_instance_address"
+    }
+  ingressURLs: |
+    {
+      "production": [
+        "https://example-production.com"
+      ],
+      "development": [
+        "https://example-development.com",
+        "https://another-example-development.com"
+      ]
+    }
+  credentials: |
+    {
+      "argocdUsername": "admin",
+      "argocdPassword": "exampleArgoCDPassword",
+      "grafanaUsername": "admin",
+      "grafanaPassword": "exampleGrafanaPassword"
+    }
+  postDeployOutput: |
+    {
+      "outputs": {
+        "EC2": [
+          {
+            "InstanceID": "i-1234567890abcdef0",
+            "InstanceType": "t2.micro",
+            "State": "running",
+            "Tags": [
+              {
+                "Key": "Name",
+                "Value": "MyInstance"
+              }
+            ]
+          },
+          {
+            "InstanceID": "i-0987654321abcdef0",
+            "InstanceType": "t3.medium",
+            "State": "stopped",
+            "Tags": [
+              {
+                "Key": "Name",
+                "Value": "YourInstance"
+              }
+            ]
+          }
+        ],
+        "RDS": [
+          {
+            "DBInstanceIdentifier": "my-db-instance",
+            "DBInstanceClass": "db.t3.medium",
+            "DBInstanceStatus": "available",
+            "Tags": [
+              {
+                "Key": "Environment",
+                "Value": "Production"
+              }
+            ]
+          }
+        ],
+        "LoadBalancer": [
+          {
+            "LoadBalancerName": "example-alb",
+            "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
+            "Type": "application",
+            "Scheme": "internet-facing",
+            "State": "active",
+            "Tags": [
+              {
+                "Key": "Environment",
+                "Value": "Development"
+              }
+            ]
+          }
+        ]
+      }
+    }
 
-  credentials: 
-    argocdUsername: "admin"
-    argocdPassword: "exampleArgoCDPassword"
-    grafanaUsername: "admin"
-    grafanaPassword: "exampleGrafanaPassword"
-  
-
-  postDeployOutput:
-    outputs:
-      EC2:
-        - InstanceID: "i-1234567890abcdef0"
-          InstanceType: "t2.micro"
-          State: "running"
-          Tags:
-            - Key: "Name"
-              Value: "MyInstance"
-        - InstanceID: "i-0987654321abcdef0"
-          InstanceType: "t3.medium"
-          State: "stopped"
-          Tags:
-            - Key: "Name"
-              Value: "YourInstance"
-      RDS:
-        - DBInstanceIdentifier: "my-db-instance"
-          DBInstanceClass: "db.t3.medium"
-          DBInstanceStatus: "available"
-          Tags:
-            - Key: "Environment"
-              Value: "Production"
-      LoadBalancer:
-        - LoadBalancerName: "example-alb"
-          DNSName: "example-alb-123456789.us-west-2.elb.amazonaws.com"
-          Type: "application"
-          Scheme: "internet-facing"
-          State: "active"
-          Tags:
-            - Key: "Environment"
-              Value: "Development"
 ```
 
 - The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
@@ -200,37 +229,63 @@ postDeploy:
 > **Output in status field looks like this:** 
 
 ```yaml
-postDeployOutput:
-  outputs:
-    EC2:
-      - InstanceID: "i-1234567890abcdef0"
-        InstanceType: "t2.micro"
-        State: "running"
-        Tags:
-          - Key: "Name"
-            Value: "MyInstance"
-      - InstanceID: "i-0987654321abcdef0"
-        InstanceType: "t3.medium"
-        State: "stopped"
-        Tags:
-          - Key: "Name"
-            Value: "YourInstance"
-    RDS:
-      - DBInstanceIdentifier: "my-db-instance"
-        DBInstanceClass: "db.t3.medium"
-        DBInstanceStatus: "available"
-        Tags:
-          - Key: "Environment"
-            Value: "Production"
-    LoadBalancer:
-      - LoadBalancerName: "example-alb"
-        DNSName: "example-alb-123456789.us-west-2.elb.amazonaws.com"
-        Type: "application"
-        Scheme: "internet-facing"
-        State: "active"
-        Tags:
-          - Key: "Environment"
-            Value: "Development"
+postDeployOutput: |
+  {
+    "outputs": {
+      "EC2": [
+        {
+          "InstanceID": "i-1234567890abcdef0",
+          "InstanceType": "t2.micro",
+          "State": "running",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "MyInstance"
+            }
+          ]
+        },
+        {
+          "InstanceID": "i-0987654321abcdef0",
+          "InstanceType": "t3.medium",
+          "State": "stopped",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "YourInstance"
+            }
+          ]
+        }
+      ],
+      "RDS": [
+        {
+          "DBInstanceIdentifier": "my-db-instance",
+          "DBInstanceClass": "db.t3.medium",
+          "DBInstanceStatus": "available",
+          "Tags": [
+            {
+              "Key": "Environment",
+              "Value": "Production"
+            }
+          ]
+        }
+      ],
+      "LoadBalancer": [
+        {
+          "LoadBalancerName": "example-alb",
+          "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
+          "Type": "application",
+          "Scheme": "internet-facing",
+          "State": "active",
+          "Tags": [
+            {
+              "Key": "Environment",
+              "Value": "Development"
+            }
+          ]
+        }
+      ]
+    }
+  }
 
 ```
 
