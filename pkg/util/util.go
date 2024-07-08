@@ -32,9 +32,9 @@ func RemoveString(slice []string, str string) []string {
 	return slice
 }
 
-func ErrorResponse(action string, err error) v1alpha1.ParentResourceStatus {
+func ErrorResponse(action string, err error) v1alpha1.TerraformStatus {
 	log.Printf("Error %s: %v", action, err)
-	return v1alpha1.ParentResourceStatus{
+	return v1alpha1.TerraformStatus{
 		State:   "Error",
 		Message: fmt.Sprintf("Error %s: %v", action, err),
 	}

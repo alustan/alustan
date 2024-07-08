@@ -7,13 +7,15 @@ import "k8s.io/apimachinery/pkg/runtime"
 func (in *Terraform) DeepCopyInto(out *Terraform) {
 	out.TypeMeta = in.TypeMeta
 	out.ObjectMeta = in.ObjectMeta
-	out.Spec = TerraformConfigSpec{
-		Variables: in.Spec.Variables,
-		Scripts:    in.Spec.Scripts,
-		PostDeploy: in.Spec.PostDeploy,
+	out.Spec = TerraformSpec{
+		Variables:         in.Spec.Variables,
+		Scripts:           in.Spec.Scripts,
+		PostDeploy:        in.Spec.PostDeploy,
 		ContainerRegistry: in.Spec.ContainerRegistry,
 	}
+	
 }
+
 
 // DeepCopyObject returns a generically typed copy of an object
 func (in *Terraform) DeepCopyObject() runtime.Object {

@@ -23,8 +23,8 @@ func GetTaggedImageName(
 	scriptContent string,
 	clientset kubernetes.Interface,
 	finalizing bool,
-) (string, v1alpha1.ParentResourceStatus) {
-	var status v1alpha1.ParentResourceStatus
+) (string, v1alpha1.TerraformStatus) {
+	var status v1alpha1.TerraformStatus
 
 	if finalizing {
 		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name)
@@ -43,8 +43,8 @@ func handleContainerRegistry(
 	observed *v1alpha1.Terraform,
 	scriptContent string,
 	clientset kubernetes.Interface,
-) (string, v1alpha1.ParentResourceStatus) {
-	var status v1alpha1.ParentResourceStatus
+) (string, v1alpha1.TerraformStatus) {
+	var status v1alpha1.TerraformStatus
 
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {

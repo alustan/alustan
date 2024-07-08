@@ -2,13 +2,15 @@ package v1alpha1
 
 import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "encoding/json"
+    "k8s.io/apimachinery/pkg/runtime"
+    
+
 )
 
 // +groupName=alustan.io
 
-// TerraformConfigSpec defines the desired state of Terraform
-type TerraformConfigSpec struct {
+// TerraformSpec defines the desired state of Terraform
+type TerraformSpec struct {
     Variables         map[string]string `json:"variables"`
     Scripts           Scripts           `json:"scripts"`
     PostDeploy        PostDeploy        `json:"postDeploy"`
@@ -34,17 +36,17 @@ type ContainerRegistry struct {
     SemanticVersion string `json:"semanticVersion"`
 }
 
-// ParentResourceStatus defines the observed state of Terraform
-type ParentResourceStatus struct {
-    State            string          `json:"state"`
-    Message          string          `json:"message"`
-    Output           json.RawMessage `json:"output,omitempty"`           
-    PostDeployOutput json.RawMessage `json:"postDeployOutput,omitempty"` 
-    IngressURLs      json.RawMessage `json:"ingressURLs,omitempty"`      
-    Credentials      json.RawMessage `json:"credentials,omitempty"`      
-    Finalized        bool            `json:"finalized"`
-    ObservedGeneration int          `json:"observedGeneration,omitempty"`
+// TerraformStatus defines the observed state of Terraform
+type TerraformStatus struct {
+	State            string                           `json:"state"`
+	Message          string                           `json:"message"`
+	Output           map[string]runtime.RawExtension  `json:"output,omitempty"`
+	IngressURLs      map[string]runtime.RawExtension  `json:"ingressURLs,omitempty"`
+	Credentials      map[string]runtime.RawExtension  `json:"credentials,omitempty"`
+	PostDeployOutput map[string]runtime.RawExtension  `json:"postDeployOutput,omitempty"`
+	ObservedGeneration int                         `json:"observedGeneration,omitempty"`
 }
+
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -55,8 +57,8 @@ type Terraform struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
 
-    Spec   TerraformConfigSpec  `json:"spec,omitempty"`
-    Status ParentResourceStatus `json:"status,omitempty"`
+    Spec   TerraformSpec  `json:"spec,omitempty"`
+    Status TerraformStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

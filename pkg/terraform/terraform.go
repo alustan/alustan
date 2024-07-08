@@ -4,21 +4,24 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"encoding/json"
+	
 	"context"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 
 	kubernetesPkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/util"
 	"github.com/alustan/pkg/containers"
 	"github.com/alustan/api/v1alpha1"
+
 )
 
-func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1alpha1.ParentResourceStatus) {
+func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1alpha1.TerraformStatus) {
 	var scriptContent string
-	var status v1alpha1.ParentResourceStatus
+	var status v1alpha1.TerraformStatus
 
 	if finalizing {
 		if observed.Spec.Scripts.Destroy != "" {
@@ -43,42 +46,44 @@ func ExecuteTerraform(
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
 	finalizing bool,
-) v1alpha1.ParentResourceStatus {
+) v1alpha1.TerraformStatus {
 
-	var status v1alpha1.ParentResourceStatus
+	var status v1alpha1.TerraformStatus
 
 	if finalizing {
-		status = v1alpha1.ParentResourceStatus{
+		status = v1alpha1.TerraformStatus{
 			State:   "Progressing",
 			Message: "Running Terraform Destroy",
 		}
 
 		status = runDestroy(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
-		if status.State == "Success" {
-			status = v1alpha1.ParentResourceStatus{
-				State:     "Completed",
-				Message:   "Destroy process completed successfully",
-				Finalized: true,
-			}
-		}
+	
 
 		return status
 	}
 
-	status = v1alpha1.ParentResourceStatus{
+	status = v1alpha1.TerraformStatus{
 		State:   "Progressing",
 		Message: "Running Terraform Apply",
 	}
 
 	status = runApply(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
+	status = v1alpha1.TerraformStatus{
+		State:   status.State,
+		Message: status.Message,
+		Output: status.Output,
+		IngressURLs: status.IngressURLs,
+		Credentials: status.Credentials,
+    }
+
 	if status.State == "Failed" {
 		return status
 	}
 
 	if observed.Spec.PostDeploy.Script != "" {
-		status = v1alpha1.ParentResourceStatus{
+		status = v1alpha1.TerraformStatus{
 			State:   "Progressing",
 			Message: "Running postDeploy script",
 		}
@@ -89,19 +94,14 @@ func ExecuteTerraform(
 			return status
 		}
 
-		postDeployOutputJson, err := json.Marshal(postDeployOutput)
-		if err != nil {
-			status = util.ErrorResponse("marshalling postDeploy output", err)
-			return status
-		}
 
-		status = v1alpha1.ParentResourceStatus{
+		status = v1alpha1.TerraformStatus{
 			State:            "Completed",
 			Message:          "Processing completed successfully",
-			PostDeployOutput: postDeployOutputJson,
+			PostDeployOutput: postDeployOutput,
 		}
 	} else {
-		status = v1alpha1.ParentResourceStatus{
+		status = v1alpha1.TerraformStatus{
 			State:   "Completed",
 			Message: "Processing completed successfully",
 		}
@@ -116,8 +116,8 @@ func runApply(
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
-) v1alpha1.ParentResourceStatus {
-	var status v1alpha1.ParentResourceStatus
+) v1alpha1.TerraformStatus {
+	var status v1alpha1.TerraformStatus
 	var terraformErr error
 	var podName string
 
@@ -145,14 +145,13 @@ func runApply(
 		return status
 	}
 
-	outputsJson, err := json.Marshal(outputs)
+	convertedOutputs, err := convertToRawExtensionMap(outputs)
 	if err != nil {
 		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error marshalling Terraform output: %v", err)
+		status.Message = fmt.Sprintf("Error converting outputs: %v", err)
 		return status
 	}
-
-	status.Output = outputsJson
+	status.Output = convertedOutputs
 
 	ingressURLs, err := kubernetesPkg.GetAllIngressURLs(clientset)
 	if err != nil {
@@ -161,14 +160,13 @@ func runApply(
 		return status
 	}
 
-	ingressURLsJson, err := json.Marshal(ingressURLs)
+	convertedIngressURLs, err := convertToRawExtensionMap(ingressURLs)
 	if err != nil {
 		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error marshalling Ingress URLs: %v", err)
+		status.Message = fmt.Sprintf("Error converting ingress URLs: %v", err)
 		return status
 	}
-
-	status.IngressURLs = ingressURLsJson
+	status.IngressURLs = convertedIngressURLs
 
 	credentials, err := kubernetesPkg.FetchCredentials(clientset)
 	if err != nil {
@@ -177,25 +175,25 @@ func runApply(
 		return status
 	}
 
-	credentialsJson, err := json.Marshal(credentials)
+	convertedCredentials, err := convertToRawExtensionMap(credentials)
 	if err != nil {
 		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error marshalling credentials: %v", err)
+		status.Message = fmt.Sprintf("Error converting credentials: %v", err)
 		return status
 	}
-
-	status.Credentials = credentialsJson
+	status.Credentials = convertedCredentials
 
 	return status
 }
+
 
 func runDestroy(
 	clientset kubernetes.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
-) v1alpha1.ParentResourceStatus {
-	var status v1alpha1.ParentResourceStatus
+) v1alpha1.TerraformStatus {
+	var status v1alpha1.TerraformStatus
 
 	if scriptContent == "" {
 		status.State = "Success"
@@ -219,8 +217,7 @@ func runDestroy(
 	}
 
 	// If successful, remove finalizer
-	status.State = "Success"
-	status.Message = "Terraform destroyed successfully"
+	
 	finalizerName := "terraform.finalizer.alustan.io"
 	if util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
 		observed.ObjectMeta.Finalizers = util.RemoveString(observed.ObjectMeta.Finalizers, finalizerName)
@@ -242,16 +239,15 @@ func runDestroy(
 }
 
 
-
 func runPostDeploy(
 	clientset kubernetes.Interface,
 	name, namespace string,
 	postDeploy v1alpha1.PostDeploy,
 	envVars map[string]string,
 	image, secretName string,
-) (map[string]interface{}, error) {
+) (map[string]runtime.RawExtension, error) {
 	scriptPath := postDeploy.Script
-	if (!strings.HasPrefix(scriptPath, "./")) {
+	if !strings.HasPrefix(scriptPath, "./") {
 		scriptPath = "./" + scriptPath
 	}
 
@@ -278,5 +274,24 @@ func runPostDeploy(
 		return nil, fmt.Errorf("error executing postDeploy script: %v", err)
 	}
 
-	return output, nil
+	convertedOutput, err := convertToRawExtensionMap(output)
+	if err != nil {
+		return nil, fmt.Errorf("error converting postDeploy output: %v", err)
+	}
+
+	return convertedOutput, nil
+}
+
+
+func convertToRawExtensionMap(input map[string]interface{}) (map[string]runtime.RawExtension, error) {
+	result := make(map[string]runtime.RawExtension)
+	encoder := json.NewSerializerWithOptions(json.DefaultMetaFactory, nil, nil, json.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
+	for key, value := range input {
+		raw, err := runtime.Encode(encoder, &runtime.Unknown{Raw: []byte(fmt.Sprintf("%v", value))})
+		if err != nil {
+			return nil, err
+		}
+		result[key] = runtime.RawExtension{Raw: raw}
+	}
+	return result, nil
 }
