@@ -19,14 +19,15 @@ import (
 )
 
 func GetTaggedImageName(
-	observed v1alpha1.SyncRequest,
+	observed *v1alpha1.Terraform,
 	scriptContent string,
 	clientset kubernetes.Interface,
+	finalizing bool,
 ) (string, v1alpha1.ParentResourceStatus) {
 	var status v1alpha1.ParentResourceStatus
 
-	if observed.Finalizing {
-		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name)
+	if finalizing {
+		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name)
 		if err != nil {
 			status = util.ErrorResponse("retrieving tagged image name", err)
 			return "", status
@@ -39,7 +40,7 @@ func GetTaggedImageName(
 }
 
 func handleContainerRegistry(
-	observed v1alpha1.SyncRequest,
+	observed *v1alpha1.Terraform,
 	scriptContent string,
 	clientset kubernetes.Interface,
 ) (string, v1alpha1.ParentResourceStatus) {
@@ -52,28 +53,28 @@ func handleContainerRegistry(
 		return "", status
 	}
 
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.ObjectMeta.Name)
-	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.Parent.ObjectMeta.Namespace, encodedDockerConfigJSON)
+	secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
+	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.ObjectMeta.Namespace, encodedDockerConfigJSON)
 	if err != nil {
 		status = util.ErrorResponse("creating Docker config secret", err)
 		return "", status
 	}
 
-	provider := observed.Parent.Spec.ContainerRegistry.Provider
+	provider := observed.Spec.ContainerRegistry.Provider
 	registryClient, err := getRegistryClient(provider, token)
 	if err != nil {
 		status = util.ErrorResponse("creating registry client", err)
 		return "", status
 	}
 
-	image := observed.Parent.Spec.ContainerRegistry.ImageName
+	image := observed.Spec.ContainerRegistry.ImageName
 	tags, err := registryClient.GetTags(image)
 	if err != nil {
 		status = util.ErrorResponse("fetching image tags", err)
 		return "", status
 	}
 
-	semanticVersion := observed.Parent.Spec.ContainerRegistry.SemanticVersion
+	semanticVersion := observed.Spec.ContainerRegistry.SemanticVersion
 	latestTag, err := getLatestTag(tags, semanticVersion)
 	if err != nil {
 		status = util.ErrorResponse("determining latest image tag", err)
@@ -81,7 +82,7 @@ func handleContainerRegistry(
 	}
 
 	taggedImageName := fmt.Sprintf("%s:%s", image, latestTag)
-	err = updateTaggedImageConfigMap(clientset, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name, taggedImageName)
+	err = updateTaggedImageConfigMap(clientset, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, taggedImageName)
 	if err != nil {
 		status = util.ErrorResponse("updating image tag in configmap", err)
 		return "", status
