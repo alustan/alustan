@@ -16,6 +16,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"  
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -228,16 +230,31 @@ func (c *Controller) processNextWorkItem() bool {
 			return fmt.Errorf("error fetching resource %s: %v", key, err)
 		}
 
+		// Convert to *v1alpha1.Terraform
+		unstructuredObj, ok := terraformObj.(*unstructured.Unstructured)
+		if !ok {
+			c.workqueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected *unstructured.Unstructured but got %T", terraformObj))
+			return nil
+		}
+		terraform := &v1alpha1.Terraform{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, terraform)
+		if err != nil {
+			c.workqueue.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("error converting unstructured object to *v1alpha1.Terraform: %v", err))
+			return nil
+		}
+
 		// Retrieve generation information from status
-		generation := terraformObj.GetGeneration()
-		observedGeneration := terraformObj.Status.ObservedGeneration
+		generation := terraform.GetGeneration()
+		observedGeneration := terraform.Status.ObservedGeneration
 
 		// Convert generation to int if necessary
 		gen := int(generation)
 
 		if gen > observedGeneration {
 			// Perform synchronization and update observed generation
-			finalStatus, err := c.handleSyncRequest(terraformObj)
+			finalStatus, err := c.handleSyncRequest(terraform)
 			if err != nil {
 				finalStatus.State = "Error"
 				finalStatus.Message = err.Error()
@@ -246,7 +263,7 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 
 			finalStatus.ObservedGeneration = gen
-			updateErr := c.updateStatus(terraformObj, finalStatus)
+			updateErr := c.updateStatus(terraform, finalStatus)
 			if updateErr != nil {
 				log.Printf("Failed to update status for %s: %v", key, updateErr)
 				c.workqueue.AddRateLimited(key)
