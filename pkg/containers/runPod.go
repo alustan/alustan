@@ -3,11 +3,9 @@ package containers
 import (
 	"context"
 	"fmt"
+    "strings"
 
-	"log"
-	"strings"
-
-
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
@@ -16,7 +14,7 @@ import (
 
 
 // CreateOrUpdateRunPod creates or updates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
+func CreateOrUpdateRunPod(logger *zap.SugaredLogger,clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
 	identifier := fmt.Sprintf("%s-%s", name, service)
 	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, service)
 
@@ -27,7 +25,7 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 			Name:  key,
 			Value: value,
 		})
-		log.Printf("Setting environment variable %s=%s", key, value)
+		logger.Infof("Setting environment variable %s=%s", key, value)
 	}
 
 	// Ensure the scriptName starts with "./"
@@ -102,41 +100,41 @@ func CreateOrUpdateRunPod(clientset kubernetes.Interface, name, namespace, scrip
 	existingPod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err == nil {
 		// Pod already exists, remove finalizers and delete it
-		log.Printf("Pod %s already exists. Removing finalizers and recreating.", podName)
+		logger.Infof("Pod %s already exists. Removing finalizers and recreating.", podName)
 
 		// Remove finalizers if any
 		if len(existingPod.ObjectMeta.Finalizers) > 0 {
 			existingPod.ObjectMeta.Finalizers = nil
 			_, err = clientset.CoreV1().Pods(namespace).Update(context.Background(), existingPod, metav1.UpdateOptions{})
 			if err != nil {
-				log.Printf("Failed to remove finalizers from Pod: %v", err)
+				logger.Infof("Failed to remove finalizers from Pod: %v", err)
 				return "", err
 			}
-			log.Printf("Removed finalizers from Pod: %s", existingPod.Name)
+			logger.Infof("Removed finalizers from Pod: %s", existingPod.Name)
 		}
 
 		// Delete the existing pod
 		err = clientset.CoreV1().Pods(namespace).Delete(context.Background(), existingPod.Name, metav1.DeleteOptions{})
 		if err != nil {
-			log.Printf("Failed to delete Pod: %v", err)
+			logger.Infof("Failed to delete Pod: %v", err)
 			return "", err
 		}
-		log.Printf("Deleted Pod: %s", existingPod.Name)
+		logger.Infof("Deleted Pod: %s", existingPod.Name)
 	} else if !apierrors.IsNotFound(err) {
 		// If the error is something other than NotFound, log and return it
-		log.Printf("Failed to get existing Pod: %v", err)
+		logger.Infof("Failed to get existing Pod: %v", err)
 		return "", err
 	}
 
 	// Create the pod with the new spec
-	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
+	logger.Infof("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
 	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
-		log.Printf("Failed to create Pod: %v", err)
+		logger.Infof("Failed to create Pod: %v", err)
 		return "", err
 	}
 
-	log.Println("Pod created successfully.")
+	logger.Info("Pod created successfully.")
 	return podName, nil
 }
 

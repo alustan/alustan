@@ -2,11 +2,12 @@ package terraform
 
 import (
 	"fmt"
-	"log"
+	
 	"strings"
 	
 	"context"
-
+     
+	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,7 +20,7 @@ import (
 
 )
 
-func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1alpha1.TerraformStatus) {
+func GetScriptContent(logger *zap.SugaredLogger, observed *v1alpha1.Terraform, finalizing bool) (string, v1alpha1.TerraformStatus) {
 	var scriptContent string
 	var status v1alpha1.TerraformStatus
 
@@ -32,7 +33,7 @@ func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1
 	} else {
 		scriptContent = observed.Spec.Scripts.Deploy
 		if scriptContent == "" {
-			status = util.ErrorResponse("executing script", fmt.Errorf("deploy script is missing"))
+			status = util.ErrorResponse(logger,"executing script", fmt.Errorf("deploy script is missing"))
 			return "", status
 		}
 	}
@@ -41,6 +42,7 @@ func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1
 }
 
 func ExecuteTerraform(
+	logger *zap.SugaredLogger, 
 	clientset kubernetes.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
@@ -56,7 +58,7 @@ func ExecuteTerraform(
 			Message: "Running Terraform Destroy",
 		}
 
-		status = runDestroy(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+		status = runDestroy(logger, clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
 	
 
@@ -68,7 +70,7 @@ func ExecuteTerraform(
 		Message: "Running Terraform Apply",
 	}
 
-	status = runApply(clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+	status = runApply(logger, clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
 	status = v1alpha1.TerraformStatus{
 		State:   status.State,
@@ -88,9 +90,9 @@ func ExecuteTerraform(
 			Message: "Running postDeploy script",
 		}
 
-		postDeployOutput, err := runPostDeploy(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, observed.Spec.PostDeploy, envVars, taggedImageName, secretName)
+		postDeployOutput, err := runPostDeploy(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, observed.Spec.PostDeploy, envVars, taggedImageName, secretName)
 		if err != nil {
-			status = util.ErrorResponse("executing postDeploy script", err)
+			status = util.ErrorResponse(logger,"executing postDeploy script", err)
 			return status
 		}
 
@@ -112,6 +114,7 @@ func ExecuteTerraform(
 
 
 func runApply(
+	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
@@ -122,10 +125,10 @@ func runApply(
 	var podName string
 
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
-		log.Printf("Error occurred: %v", err)
+		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		podName, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		podName, terraformErr = containers.CreateOrUpdateRunPod(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -138,7 +141,7 @@ func runApply(
 		return status
 	}
 
-	outputs, err := containers.WaitForPodCompletion(clientset, observed.ObjectMeta.Namespace, podName)
+	outputs, err := containers.WaitForPodCompletion(logger,clientset, observed.ObjectMeta.Namespace, podName)
 	if err != nil {
 		status.State = "Failed"
 		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
@@ -188,6 +191,7 @@ func runApply(
 
 
 func runDestroy(
+	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
@@ -203,10 +207,10 @@ func runDestroy(
 
 	var terraformErr error
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
-		log.Printf("Error occurred: %v", err)
+		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
+		_, terraformErr = containers.CreateOrUpdateRunPod(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
 		return terraformErr
 	})
 
@@ -240,6 +244,7 @@ func runDestroy(
 
 
 func runPostDeploy(
+	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
 	name, namespace string,
 	postDeploy v1alpha1.PostDeploy,
@@ -264,12 +269,12 @@ func runPostDeploy(
 
 	fmt.Println("Command:", command)
 
-	podName, err := containers.CreateOrUpdateRunPod(clientset, name, namespace, command, envVars, image, secretName, "postdeploy")
+	podName, err := containers.CreateOrUpdateRunPod(logger,clientset, name, namespace, command, envVars, image, secretName, "postdeploy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create post-deploy pod: %v", err)
 	}
 
-	output, err := containers.ExtractPostDeployOutput(clientset, namespace, podName)
+	output, err := containers.ExtractPostDeployOutput(logger,clientset, namespace, podName)
 	if err != nil {
 		return nil, fmt.Errorf("error executing postDeploy script: %v", err)
 	}

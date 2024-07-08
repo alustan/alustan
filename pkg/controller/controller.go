@@ -4,12 +4,13 @@ import (
 	"context"
 	
 	"fmt"
-	"log"
+	
 	"time"
 
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -39,10 +40,15 @@ type Controller struct {
 	terraformLister  listers.TerraformLister
 	informerFactory  dynamicinformer.DynamicSharedInformerFactory // Shared informer factory for Terraform resources
 	informer         cache.SharedIndexInformer                    // Informer for Terraform resources
+	logger           *zap.SugaredLogger
 }
 
 
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+	
 	ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
@@ -50,6 +56,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		lastSyncTime:    time.Now().Add(-syncInterval), // Initialize to allow immediate first run
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
 		informerFactory: dynamicinformer.NewDynamicSharedInformerFactory(dynClient, syncInterval),
+		logger:          sugar,
 	}
 
 	// Initialize informer
@@ -59,19 +66,23 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 }
 
 func NewInClusterController(syncInterval time.Duration) *Controller {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Error creating in-cluster config: %v", err)
+		sugar.Fatalf("Error creating in-cluster config: %v", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Error creating Kubernetes clientset: %v", err)
+		sugar.Fatalf("Error creating Kubernetes clientset: %v", err)
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Error creating dynamic Kubernetes client: %v", err)
+		sugar.Fatalf("Error creating dynamic Kubernetes client: %v", err)
 	}
 
 	return NewController(clientset, dynClient, syncInterval)
@@ -102,7 +113,7 @@ func (c *Controller) initInformer() {
 
 func (c *Controller) setupInformer(stopCh <-chan struct{}) {
 	if c.informer == nil {
-		log.Fatal("informer is nil, ensure initInformer is called before setupInformer")
+		c.logger.Fatal("informer is nil, ensure initInformer is called before setupInformer")
 	}
 
 	// Start the informer
@@ -110,7 +121,7 @@ func (c *Controller) setupInformer(stopCh <-chan struct{}) {
 
 	// Wait for the informer's cache to sync
 	if !cache.WaitForCacheSync(stopCh, c.informer.HasSynced) {
-		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
+		c.logger.Error("timed out waiting for caches to sync")
 		return
 	}
 }
@@ -118,7 +129,7 @@ func (c *Controller) setupInformer(stopCh <-chan struct{}) {
 func (c *Controller) handleAddTerraform(obj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		c.logger.Errorf("couldn't get key for object %+v: %v", obj, err)
 		return
 	}
 	c.enqueue(key)
@@ -127,7 +138,7 @@ func (c *Controller) handleAddTerraform(obj interface{}) {
 func (c *Controller) handleUpdateTerraform(old, new interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(new)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", new, err))
+		c.logger.Errorf("couldn't get key for object %+v: %v", new, err)
 		return
 	}
 	c.enqueue(key)
@@ -136,7 +147,7 @@ func (c *Controller) handleUpdateTerraform(old, new interface{}) {
 func (c *Controller) handleDeleteTerraform(obj interface{}) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		c.logger.Errorf("couldn't get key for object %+v: %v", obj, err)
 		return
 	}
 	c.enqueue(key)
@@ -147,9 +158,9 @@ func (c *Controller) enqueue(key string) {
 }
 
 func (c *Controller) RunLeader(stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
+	defer c.logger.Sync()
 
-	log.Println("Starting Terraform controller")
+	c.logger.Info("Starting Terraform controller")
 
 	// Setup informers and listers
 	c.setupInformer(stopCh)
@@ -167,7 +178,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		},
 	)
 	if err != nil {
-		log.Fatalf("Failed to create resource lock: %v", err)
+		c.logger.Fatalf("Failed to create resource lock: %v", err)
 	}
 
 	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
@@ -177,12 +188,12 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		RetryPeriod:   2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				log.Println("Became leader, starting reconciliation loop")
+				c.logger.Info("Became leader, starting reconciliation loop")
 				// Start processing items
 				go c.runWorker()
 			},
 			OnStoppedLeading: func() {
-				log.Println("Lost leadership, stopping reconciliation loop")
+				c.logger.Info("Lost leadership, stopping reconciliation loop")
 				// Stop processing items
 				c.workqueue.ShutDown()
 			},
@@ -207,14 +218,14 @@ func (c *Controller) processNextWorkItem() bool {
 		key, ok := obj.(string)
 		if !ok {
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %T", obj))
+			c.logger.Errorf("expected string in workqueue but got %T", obj)
 			return nil
 		}
 
 		namespace, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+			c.logger.Errorf("invalid resource key: %s", key)
 			return nil
 		}
 
@@ -227,6 +238,7 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 
 			c.workqueue.AddRateLimited(key)
+			c.logger.Errorf("error fetching resource %s: %v", key, err)
 			return fmt.Errorf("error fetching resource %s: %v", key, err)
 		}
 
@@ -234,14 +246,14 @@ func (c *Controller) processNextWorkItem() bool {
 		unstructuredObj, ok := terraformObj.(*unstructured.Unstructured)
 		if !ok {
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected *unstructured.Unstructured but got %T", terraformObj))
+			c.logger.Errorf("expected *unstructured.Unstructured but got %T", terraformObj)
 			return nil
 		}
 		terraform := &v1alpha1.Terraform{}
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, terraform)
 		if err != nil {
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("error converting unstructured object to *v1alpha1.Terraform: %v", err))
+			c.logger.Errorf("error converting unstructured object to *v1alpha1.Terraform: %v", err)
 			return nil
 		}
 
@@ -259,13 +271,14 @@ func (c *Controller) processNextWorkItem() bool {
 				finalStatus.State = "Error"
 				finalStatus.Message = err.Error()
 				c.workqueue.AddRateLimited(key)
+				c.logger.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 				return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 			}
 
 			finalStatus.ObservedGeneration = gen
 			updateErr := c.updateStatus(terraform, finalStatus)
 			if updateErr != nil {
-				log.Printf("Failed to update status for %s: %v", key, updateErr)
+				c.logger.Infof("Failed to update status for %s: %v", key, updateErr)
 				c.workqueue.AddRateLimited(key)
 				return updateErr
 			}
@@ -276,7 +289,7 @@ func (c *Controller) processNextWorkItem() bool {
 	}(obj)
 
 	if err != nil {
-		utilruntime.HandleError(err)
+		c.logger.Error(err)
 		return true
 	}
 
@@ -286,7 +299,7 @@ func (c *Controller) processNextWorkItem() bool {
 func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.TerraformStatus, error) {
     envVars := util.ExtractEnvVars(observed.Spec.Variables)
     secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
-    log.Printf("Observed Parent Spec: %+v", observed.Spec)
+    c.logger.Infof("Observed Parent Spec: %+v", observed.Spec)
 
     commonStatus := v1alpha1.TerraformStatus{
         State:   "Progressing",
@@ -317,23 +330,23 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
     }
 
     // Handle script content
-    scriptContent, scriptContentStatus := terraform.GetScriptContent(observed, finalizing)
+    scriptContent, scriptContentStatus := terraform.GetScriptContent(c.logger,observed, finalizing)
     commonStatus = mergeStatuses(commonStatus, scriptContentStatus)
     if scriptContentStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error getting script content")
     }
 
     // Handle tagged image name
-    taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.Clientset, finalizing)
+    taggedImageName, taggedImageStatus := registry.GetTaggedImageName(c.logger,observed, scriptContent, c.Clientset, finalizing)
     commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
     if taggedImageStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error getting tagged image name")
     }
 
-    log.Printf("taggedImageName: %v", taggedImageName)
+    c.logger.Infof("taggedImageName: %v", taggedImageName)
 
     // Handle ExecuteTerraform
-    execTerraformStatus := terraform.ExecuteTerraform(c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
+    execTerraformStatus := terraform.ExecuteTerraform(c.logger,c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
     commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
 
     if execTerraformStatus.State == "Error" {
@@ -368,12 +381,14 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.TerraformStatus) v1alpha1.Terr
 
 
 func (c *Controller) updateStatus(observed *v1alpha1.Terraform, status v1alpha1.TerraformStatus) error {
-	err := Kubernetespkg.UpdateStatus(c.dynClient, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, status)
+	err := Kubernetespkg.UpdateStatus(c.logger, c.dynClient, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, status)
 	if err != nil {
-		log.Printf("Error updating status for %s: %v", observed.ObjectMeta.Name, err)
+		c.logger.Errorf("Failed to update status for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
+		return err
 	}
-	return err
+	return nil
 }
+
 
 
 

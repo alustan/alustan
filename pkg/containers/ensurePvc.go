@@ -3,8 +3,9 @@ package containers
 
 import (
     "context"
-    "log"
+    
   
+    "go.uber.org/zap"
    v1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
    "k8s.io/apimachinery/pkg/api/resource"
@@ -12,14 +13,14 @@ import (
 )
 
 // EnsurePVC ensures that the specified Persistent Volume Claim exists.
-func EnsurePVC(clientset  kubernetes.Interface, namespace, pvcName string) error {
+func EnsurePVC(logger *zap.SugaredLogger,clientset  kubernetes.Interface, namespace, pvcName string) error {
     pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvcName, metav1.GetOptions{})
     if err == nil && pvc != nil {
-        log.Printf("PVC %s already exists in namespace %s", pvcName, namespace)
+        logger.Infof("PVC %s already exists in namespace %s", pvcName, namespace)
         return nil
     }
 
-    log.Printf("Creating PVC %s in namespace %s", pvcName, namespace)
+    logger.Infof("Creating PVC %s in namespace %s", pvcName, namespace)
     pvc = &v1.PersistentVolumeClaim{
         ObjectMeta: metav1.ObjectMeta{
             Name: pvcName,
@@ -38,10 +39,10 @@ func EnsurePVC(clientset  kubernetes.Interface, namespace, pvcName string) error
     
     _, err = clientset.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
     if err != nil {
-        log.Printf("Failed to create PVC: %v", err)
+        logger.Infof("Failed to create PVC: %v", err)
         return err
     }
 
-    log.Println("PVC created successfully.")
+    logger.Info("PVC created successfully.")
     return nil
 }

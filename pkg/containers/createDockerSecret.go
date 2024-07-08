@@ -5,8 +5,10 @@ import (
     "encoding/base64"
     "encoding/json"
     "fmt"
-    "log"
+    
      "strings"
+
+     "go.uber.org/zap"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
@@ -23,7 +25,7 @@ type DockerConfig struct {
 // CreateDockerConfigSecret creates a Kubernetes Secret of type kubernetes.io/dockerconfigjson
 // dockerConfigJSON should be base64-encoded JSON string.
 // It returns the decoded username and password used in the Docker config JSON.
-func CreateDockerConfigSecret(clientset kubernetes.Interface, secretName, namespace, encodedDockerConfigJSON string) (string, string, error) {
+func CreateDockerConfigSecret(logger *zap.SugaredLogger,clientset kubernetes.Interface, secretName, namespace, encodedDockerConfigJSON string) (string, string, error) {
     // Decode the base64 string to verify it's correct
     decodedData, err := base64.StdEncoding.DecodeString(encodedDockerConfigJSON)
     if err != nil {
@@ -71,7 +73,7 @@ func CreateDockerConfigSecret(clientset kubernetes.Interface, secretName, namesp
     if err != nil {
         // If the secret already exists, update it if necessary
         if apierrors.IsAlreadyExists(err) {
-            log.Printf("Secret %s already exists, checking if it needs to be updated", secretName)
+            logger.Infof("Secret %s already exists, checking if it needs to be updated", secretName)
 
             // Fetch the existing secret
             existingSecret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
@@ -81,7 +83,7 @@ func CreateDockerConfigSecret(clientset kubernetes.Interface, secretName, namesp
 
             // Check if the existing secret's data is different from the new data
             if existingSecret.Data[".dockerconfigjson"] == nil || !equal(existingSecret.Data[".dockerconfigjson"], decodedData) {
-                log.Printf("Secret %s needs to be updated", secretName)
+                logger.Infof("Secret %s needs to be updated", secretName)
                 existingSecret.Data[".dockerconfigjson"] = decodedData
 
                 // Update the existing secret
@@ -90,7 +92,7 @@ func CreateDockerConfigSecret(clientset kubernetes.Interface, secretName, namesp
                     return "", "", fmt.Errorf("failed to update existing secret: %v", err)
                 }
             } else {
-                log.Printf("Secret %s is already up-to-date", secretName)
+                logger.Infof("Secret %s is already up-to-date", secretName)
             }
         } else {
             return "", "", fmt.Errorf("failed to create secret: %v", err)

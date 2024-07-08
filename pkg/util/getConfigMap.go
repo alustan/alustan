@@ -2,26 +2,27 @@ package util
 
 import (
 	"context"
-	"log"
+	
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // GetConfigMapContent retrieves the content of the ConfigMap based on its name and key.
-func GetConfigMapContent(clientset  kubernetes.Interface, namespace, name, key string) (string, error) {
+func GetConfigMapContent(logger *zap.SugaredLogger,clientset  kubernetes.Interface, namespace, name, key string) (string, error) {
 	// Retrieve the ConfigMap
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to get ConfigMap '%s': %v", name, err)
+		logger.Infof("Failed to get ConfigMap '%s': %v", name, err)
 		return "", err
 	}
 
 	// Extract the data from the ConfigMap using the specified key
 	data, exists := configMap.Data[key]
 	if !exists {
-		errMsg := logErrorAndReturn("Key '%s' not found in ConfigMap '%s'", key, name)
+		errMsg := logErrorAndReturnConfigMap(logger,"Key '%s' not found in ConfigMap '%s'", key, name)
 		return "", errMsg
 	}
 
@@ -29,8 +30,8 @@ func GetConfigMapContent(clientset  kubernetes.Interface, namespace, name, key s
 }
 
 // logErrorAndReturnConfigMap logs the error and returns it
-func logErrorAndReturnConfigMap(format string, args ...interface{}) error {
+func logErrorAndReturnConfigMap(logger *zap.SugaredLogger,format string, args ...interface{}) error {
 	err := fmt.Errorf(format, args...)
-	log.Println(err)
+	logger.Info(err)
 	return err
 }
