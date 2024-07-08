@@ -8,8 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/alustan/pkg/util"
 	"github.com/alustan/pkg/controller"
+	"github.com/alustan/api/v1alpha1"
 )
 
 // Variables to be set by ldflags
@@ -19,6 +23,12 @@ var (
 	date    string
 	builtBy string
 )
+
+func init() {
+	// Register the custom resource types with the global scheme
+	utilruntime.Must(v1alpha1.AddToScheme(runtime.NewScheme()))
+}
+
 
 func main() {
 	fmt.Printf("Version: %s\n", version)

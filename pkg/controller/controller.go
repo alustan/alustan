@@ -19,8 +19,6 @@ import (
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
-	
-	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/alustan/pkg/registry"
 	"github.com/alustan/api/v1alpha1"
@@ -41,10 +39,8 @@ type Controller struct {
 	informer         cache.SharedIndexInformer                    // Informer for Terraform resources
 }
 
-func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
-	// Register the custom resource types with the global scheme
-	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 
+func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
 	ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
