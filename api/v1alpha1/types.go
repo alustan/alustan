@@ -68,16 +68,11 @@ type TerraformList struct {
     Items           []Terraform `json:"items"`
 }
 
-// SyncRequest represents the sync request from the controller
-type SyncRequest struct {
-    Parent     Terraform `json:"parent"`
-    Finalizing bool      `json:"finalizing"`
-}
 
-// SyncResponse represents the sync response from the controller
-type SyncResponse struct {
-    Status    ParentResourceStatus `json:"status,omitempty"`
-    Finalized bool                 `json:"finalized"`
-}
+
+
+
+
+
 
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"encoding/json"
+	"context"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
@@ -15,18 +16,18 @@ import (
 	"github.com/alustan/api/v1alpha1"
 )
 
-func GetScriptContent(observed v1alpha1.SyncRequest) (string, v1alpha1.ParentResourceStatus) {
+func GetScriptContent(observed *v1alpha1.Terraform, finalizing bool) (string, v1alpha1.ParentResourceStatus) {
 	var scriptContent string
 	var status v1alpha1.ParentResourceStatus
 
-	if observed.Finalizing {
-		if observed.Parent.Spec.Scripts.Destroy != "" {
-			scriptContent = observed.Parent.Spec.Scripts.Destroy
+	if finalizing {
+		if observed.Spec.Scripts.Destroy != "" {
+			scriptContent = observed.Spec.Scripts.Destroy
 		} else {
 			scriptContent = ""
 		}
 	} else {
-		scriptContent = observed.Parent.Spec.Scripts.Deploy
+		scriptContent = observed.Spec.Scripts.Deploy
 		if scriptContent == "" {
 			status = util.ErrorResponse("executing script", fmt.Errorf("deploy script is missing"))
 			return "", status
@@ -38,14 +39,15 @@ func GetScriptContent(observed v1alpha1.SyncRequest) (string, v1alpha1.ParentRes
 
 func ExecuteTerraform(
 	clientset kubernetes.Interface,
-	observed v1alpha1.SyncRequest,
+	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
+	finalizing bool,
 ) v1alpha1.ParentResourceStatus {
 
 	var status v1alpha1.ParentResourceStatus
 
-	if observed.Finalizing {
+	if finalizing {
 		status = v1alpha1.ParentResourceStatus{
 			State:   "Progressing",
 			Message: "Running Terraform Destroy",
@@ -75,13 +77,13 @@ func ExecuteTerraform(
 		return status
 	}
 
-	if observed.Parent.Spec.PostDeploy.Script != "" {
+	if observed.Spec.PostDeploy.Script != "" {
 		status = v1alpha1.ParentResourceStatus{
 			State:   "Progressing",
 			Message: "Running postDeploy script",
 		}
 
-		postDeployOutput, err := runPostDeploy(clientset, observed.Parent.ObjectMeta.Name, observed.Parent.ObjectMeta.Namespace, observed.Parent.Spec.PostDeploy, envVars, taggedImageName, secretName)
+		postDeployOutput, err := runPostDeploy(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, observed.Spec.PostDeploy, envVars, taggedImageName, secretName)
 		if err != nil {
 			status = util.ErrorResponse("executing postDeploy script", err)
 			return status
@@ -111,7 +113,7 @@ func ExecuteTerraform(
 
 func runApply(
 	clientset kubernetes.Interface,
-	observed v1alpha1.SyncRequest,
+	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
 ) v1alpha1.ParentResourceStatus {
@@ -123,7 +125,7 @@ func runApply(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		podName, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.Parent.ObjectMeta.Name, observed.Parent.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		podName, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -136,7 +138,7 @@ func runApply(
 		return status
 	}
 
-	outputs, err := containers.WaitForPodCompletion(clientset, observed.Parent.ObjectMeta.Namespace, podName)
+	outputs, err := containers.WaitForPodCompletion(clientset, observed.ObjectMeta.Namespace, podName)
 	if err != nil {
 		status.State = "Failed"
 		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
@@ -189,7 +191,7 @@ func runApply(
 
 func runDestroy(
 	clientset kubernetes.Interface,
-	observed v1alpha1.SyncRequest,
+	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
 ) v1alpha1.ParentResourceStatus {
@@ -206,20 +208,40 @@ func runDestroy(
 		log.Printf("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.Parent.ObjectMeta.Name, observed.Parent.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
+		_, terraformErr = containers.CreateOrUpdateRunPod(clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
 		return terraformErr
 	})
-
-	status.State = "Success"
-	status.Message = "Terraform destroyed successfully"
 
 	if err != nil {
 		status.State = "Failed"
 		status.Message = terraformErr.Error()
+		return status
+	}
+
+	// If successful, remove finalizer
+	status.State = "Success"
+	status.Message = "Terraform destroyed successfully"
+	finalizerName := "terraform.finalizer.alustan.io"
+	if util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
+		observed.ObjectMeta.Finalizers = util.RemoveString(observed.ObjectMeta.Finalizers, finalizerName)
+		_, updateErr := clientset.CoreV1().RESTClient().
+			Put().
+			Namespace(observed.Namespace).
+			Resource("terraforms").
+			Name(observed.Name).
+			Body(observed).
+			Do(context.TODO()).
+			Get()
+		if updateErr != nil {
+			status.State = "Failed"
+			status.Message = fmt.Sprintf("error removing finalizer: %v", updateErr)
+		}
 	}
 
 	return status
 }
+
+
 
 func runPostDeploy(
 	clientset kubernetes.Interface,

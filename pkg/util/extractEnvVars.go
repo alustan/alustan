@@ -1,12 +1,7 @@
 package util
 
 import (
-	
-	"log"
 	"fmt"
-
-	"github.com/alustan/api/v1alpha1"
-
 )
 
 
@@ -18,14 +13,6 @@ func FormatEnvVars(envVars map[string]string) []string {
 		formattedVars = append(formattedVars, fmt.Sprintf("%s=%s", key, value))
 	}
 	return formattedVars
-}
-
-func ErrorResponse(action string, err error) v1alpha1.ParentResourceStatus {
-	log.Printf("Error %s: %v", action, err)
-	return v1alpha1.ParentResourceStatus{
-		State:   "Error",
-		Message: fmt.Sprintf("Error %s: %v", action, err),
-	}
 }
 
 

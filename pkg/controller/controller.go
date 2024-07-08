@@ -2,66 +2,58 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"sync"
+    
 	"time"
 
-	"github.com/gin-gonic/gin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+
+	
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	
-
-	kubernetespkg "github.com/alustan/pkg/kubernetes"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"github.com/alustan/pkg/registry"
 	"github.com/alustan/api/v1alpha1"
 	"github.com/alustan/pkg/terraform"
 	"github.com/alustan/pkg/util"
+    "github.com/alustan/pkg/listers"
 )
 
 type Controller struct {
-	Clientset    kubernetes.Interface
-	dynClient    dynamic.Interface
-	syncInterval time.Duration
-	lastSyncTime time.Time
-	Cache        map[string]string // Cache to store CRD states
-	cacheMutex   sync.Mutex        // Mutex to protect cache access
-	workqueue    workqueue.RateLimitingInterface
-	observedMap  map[string]v1alpha1.SyncRequest // Map to store observed SyncRequests
-	mapMutex     sync.Mutex                         // Mutex to protect map access
-	statusMap    map[string]chan v1alpha1.ParentResourceStatus // Map to store status channels
-	statusMutex  sync.Mutex                                      // Mutex to protect status map access
-	
-}
-
-type SyncRequestWrapper struct {
-	SyncRequest v1alpha1.SyncRequest
-}
-
-func (w *SyncRequestWrapper) GetObjectMeta() metav1.Object {
-	return &w.SyncRequest.Parent.ObjectMeta
+	Clientset        kubernetes.Interface
+	dynClient        dynamic.Interface
+	syncInterval     time.Duration
+	lastSyncTime     time.Time
+	workqueue        workqueue.RateLimitingInterface
+    terraformLister listers.TerraformLister
+	informerFactory  informers.SharedInformerFactory // Shared informer factory for Terraform resources
 }
 
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
+    // Register the custom resource types with the global scheme
+    utilruntime.Must(v1alpha1.AddToScheme(runtime.NewScheme()))
+
     ctrl := &Controller{
-        Clientset:    clientset,
-        dynClient:    dynClient,
-        syncInterval: syncInterval,
-        lastSyncTime: time.Now().Add(-syncInterval), // Initialize to allow immediate first run
-        Cache:        make(map[string]string),       // Initialize cache
-        workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
-        observedMap:  make(map[string]v1alpha1.SyncRequest), // Initialize observed map
-        statusMap:    make(map[string]chan v1alpha1.ParentResourceStatus), // Initialize status map
+        Clientset:       clientset,
+        dynClient:       dynClient,
+        syncInterval:    syncInterval,
+        lastSyncTime:    time.Now().Add(-syncInterval), // Initialize to allow immediate first run
+        workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
+        informerFactory: informers.NewSharedInformerFactory(clientset, syncInterval),
     }
 
     return ctrl
@@ -86,175 +78,276 @@ func NewInClusterController(syncInterval time.Duration) *Controller {
 	return NewController(clientset, dynClient, syncInterval)
 }
 
-func (c *Controller) ServeHTTP(r *gin.Context) {
-	var observed v1alpha1.SyncRequest
-	err := json.NewDecoder(r.Request.Body).Decode(&observed)
+func (c *Controller) setupInformer(stopCh <-chan struct{}) {
+    // Define the GroupVersionResource for the custom resource
+    gvr := schema.GroupVersionResource{
+        Group:    "alustan.io",
+        Version:  "v1alpha1",
+        Resource: "terraforms",
+    }
+
+    // Get the informer and error returned by ForResource
+    informer, err := c.informerFactory.ForResource(gvr)
+    if err != nil {
+        utilruntime.HandleError(fmt.Errorf("error creating informer for %s: %v", gvr.Resource, err))
+        return
+    }
+
+    // Get the informer object from the result
+    informerObj := informer.Informer()
+
+    // Set the lister for the custom resource
+    c.terraformLister = listers.NewTerraformLister(informerObj.GetIndexer())
+
+    // Set up event handlers for when resources change or are added
+    informerObj.AddEventHandler(cache.ResourceEventHandlerFuncs{
+        AddFunc:    c.handleAddTerraform,
+        UpdateFunc: c.handleUpdateTerraform,
+        DeleteFunc: c.handleDeleteTerraform,
+    })
+
+    // Start the informer
+    go informerObj.Run(stopCh)
+}
+
+
+
+
+func (c *Controller) handleAddTerraform(obj interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
-		response := gin.H{"body": err.Error()}
-		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusBadRequest, response)
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
 		return
 	}
-	defer func() {
-		if err := r.Request.Body.Close(); err != nil {
-			log.Printf("Error closing request body: %v", err)
-		}
-	}()
-
-	// Log the incoming SyncRequest
-	log.Printf("Received SyncRequest: %+v", observed)
-
-	key := fmt.Sprintf("%s/%s", observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name)
-
-	// Create a channel to receive the final status
-	statusChan := make(chan v1alpha1.ParentResourceStatus)
-
-	// Store the status channel in the map
-	c.statusMutex.Lock()
-	c.statusMap[key] = statusChan
-	c.statusMutex.Unlock()
-
-	// Store the observed SyncRequest in the map
-	c.mapMutex.Lock()
-	c.observedMap[key] = observed
-	c.mapMutex.Unlock()
-
-	// Check if the CRD has changed before processing
-	if !c.IsCRDChanged(observed) {
-		c.mapMutex.Lock()
-		existingStatus := c.statusMap[key]
-		c.mapMutex.Unlock()
-		
-		// Enqueue the request if finalizing
-		if observed.Finalizing {
-			c.enqueue(key)
-		} else {
-			// Return the current status if the CRD hasn't changed
-			finalStatus := <-existingStatus
-			desired := v1alpha1.SyncResponse{
-				Status:    finalStatus,
-				Finalized: finalStatus.Finalized,
-			}
-
-			// Log the SyncResponse
-			log.Printf("Sending SyncResponse: %+v", desired)
-			r.Writer.Header().Set("Content-Type", "application/json")
-			r.JSON(http.StatusOK, gin.H{"body": desired})
-			return
-		}
-	}
-
-	// Enqueue SyncRequest for processing
 	c.enqueue(key)
+}
 
-	// Wait for the final status
-	finalStatus := <-statusChan
-
-	// Clean up the status channel map
-	c.statusMutex.Lock()
-	delete(c.statusMap, key)
-	c.statusMutex.Unlock()
-
-	// Check for error in the status and send an appropriate HTTP response
-	if finalStatus.State == "Error" {
-		desired := v1alpha1.SyncResponse{
-			Status:    finalStatus,
-			Finalized: false,
-		}
-		// Log the SyncResponse
-		log.Printf("Sending SyncResponse: %+v", desired)
-		r.Writer.Header().Set("Content-Type", "application/json")
-		r.JSON(http.StatusBadRequest, gin.H{"body": desired})
+func (c *Controller) handleUpdateTerraform(old, new interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(new)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", new, err))
 		return
 	}
-
-	// Update the cache as the CRD has changed
-	c.UpdateCache(observed)
-
-	// Extract the finalized field from the status
-	finalized := finalStatus.Finalized
-
-	// Construct the desired state
-	desired := v1alpha1.SyncResponse{
-		Status:    finalStatus,
-		Finalized: finalized,
-	}
-
-	// Log the SyncResponse
-	log.Printf("Sending SyncResponse: %+v", desired)
-
-	// Return the response in the expected format
-	response := gin.H{"body": desired}
-	r.Writer.Header().Set("Content-Type", "application/json")
-	r.JSON(http.StatusOK, response)
+	c.enqueue(key)
 }
 
-
-func (c *Controller) handleSyncRequest(observed v1alpha1.SyncRequest) (v1alpha1.ParentResourceStatus, error) {
-	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables)
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.ObjectMeta.Name)
-	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
-
-	commonStatus := v1alpha1.ParentResourceStatus{
-		State:   "Progressing",
-		Message: "Starting processing",
-	}
-
-	// Handle script content
-	scriptContent, scriptContentStatus := terraform.GetScriptContent(observed)
-	commonStatus = mergeStatuses(commonStatus, scriptContentStatus)
-	if scriptContentStatus.State == "Error" {
-		return commonStatus, fmt.Errorf("error getting script content")
-	}
-
-	// Handle tagged image name
-	taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.Clientset)
-	commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
-	if taggedImageStatus.State == "Error" {
-		return commonStatus, fmt.Errorf("error getting tagged image name")
-	}
-
-	log.Printf("taggedImageName: %v", taggedImageName)
-
-	// Handle ExecuteTerraform
-	execTerraformStatus := terraform.ExecuteTerraform(c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars)
-	commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
-
-	if execTerraformStatus.State == "Error" {
-		return commonStatus, fmt.Errorf("error executing terraform")
-	}
-
-	return commonStatus, nil
-}
-
-func (c *Controller) IsCRDChanged(observed v1alpha1.SyncRequest) bool {
-	c.cacheMutex.Lock()
-	defer c.cacheMutex.Unlock()
-
-	newHash := HashSpec(observed.Parent.Spec)
-	oldHash, exists := c.Cache[observed.Parent.ObjectMeta.Name]
-
-	return !exists || newHash != oldHash
-}
-
-func (c *Controller) UpdateCache(observed v1alpha1.SyncRequest) {
-	c.cacheMutex.Lock()
-	defer c.cacheMutex.Unlock()
-
-	newHash := HashSpec(observed.Parent.Spec)
-	c.Cache[observed.Parent.ObjectMeta.Name] = newHash
-}
-
-func HashSpec(spec v1alpha1.TerraformConfigSpec) string {
-	hash := sha256.New()
-	data, err := json.Marshal(spec)
+func (c *Controller) handleDeleteTerraform(obj interface{}) {
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		log.Printf("Error hashing spec: %v", err)
-		return ""
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		return
 	}
-	hash.Write(data)
-	return hex.EncodeToString(hash.Sum(nil))
+	c.enqueue(key)
 }
+
+func (c *Controller) enqueue(key string) {
+	c.workqueue.AddRateLimited(key)
+}
+
+
+
+func (c *Controller) RunLeader(stopCh <-chan struct{}) {
+    defer utilruntime.HandleCrash()
+
+    log.Println("Starting Terraform controller")
+
+    // Setup informers and listers
+    c.setupInformer(stopCh)
+
+    // Collect sync functions for all informers
+    informer, err := c.informerFactory.ForResource(schema.GroupVersionResource{
+        Group:    "alustan.io",
+        Version:  "v1alpha1",
+        Resource: "terraforms",
+    })
+    if err != nil {
+        log.Fatalf("Failed to get informer for resource: %v", err)
+    }
+    informerSynced := informer.Informer().HasSynced
+
+    if !cache.WaitForCacheSync(stopCh, informerSynced) {
+        utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
+        return
+    }
+
+    // Leader election configuration
+    id := util.GetUniqueID()
+    rl, err := resourcelock.New(
+        resourcelock.LeasesResourceLock,
+        "alustan",
+        "terraform-controller-lock",
+        c.Clientset.CoreV1(),
+        c.Clientset.CoordinationV1(),
+        resourcelock.ResourceLockConfig{
+            Identity: id,
+        },
+    )
+    if err != nil {
+        log.Fatalf("Failed to create resource lock: %v", err)
+    }
+
+    leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
+        Lock:          rl,
+        LeaseDuration: 15 * time.Second,
+        RenewDeadline: 10 * time.Second,
+        RetryPeriod:   2 * time.Second,
+        Callbacks: leaderelection.LeaderCallbacks{
+            OnStartedLeading: func(ctx context.Context) {
+                log.Println("Became leader, starting reconciliation loop")
+                // Start processing items
+                go c.runWorker()
+            },
+            OnStoppedLeading: func() {
+                log.Println("Lost leadership, stopping reconciliation loop")
+                // Stop processing items
+                c.workqueue.ShutDown()
+            },
+        },
+        ReleaseOnCancel: true,
+    })
+}
+
+
+
+func (c *Controller) runWorker() {
+	for c.processNextWorkItem() {
+	}
+}
+
+func (c *Controller) processNextWorkItem() bool {
+    obj, shutdown := c.workqueue.Get()
+    if shutdown {
+        return false
+    }
+
+    err := func(obj interface{}) error {
+        defer c.workqueue.Done(obj)
+        key, ok := obj.(string)
+        if !ok {
+            c.workqueue.Forget(obj)
+            utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %T", obj))
+            return nil
+        }
+
+        namespace, name, err := cache.SplitMetaNamespaceKey(key)
+        if err != nil {
+            c.workqueue.Forget(obj)
+            utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+            return nil
+        }
+
+        // Get the actual resource using the lister
+        terraformObj, err := c.terraformLister.Terraform(namespace).Get(name)
+        if err != nil {
+            if errors.IsNotFound(err) {
+                c.workqueue.Forget(obj)
+                return nil
+            }
+
+            c.workqueue.AddRateLimited(key)
+            return fmt.Errorf("error fetching resource %s: %v", key, err)
+        }
+
+        // Retrieve generation information from status
+        generation := terraformObj.GetGeneration()
+        observedGeneration := terraformObj.Status.ObservedGeneration
+
+        // Convert generation to int if necessary
+        gen := int(generation)
+
+        if gen > observedGeneration {
+            // Perform synchronization and update observed generation
+            finalStatus, err := c.handleSyncRequest(terraformObj)
+            if err != nil {
+                finalStatus.State = "Error"
+                finalStatus.Message = err.Error()
+                c.workqueue.AddRateLimited(key)
+                return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+            }
+
+            finalStatus.ObservedGeneration = gen  
+            updateErr := c.updateStatus(terraformObj, finalStatus)
+            if updateErr != nil {
+                log.Printf("Failed to update status for %s: %v", key, updateErr)
+                c.workqueue.AddRateLimited(key)
+                return updateErr
+            }
+        }
+
+        c.workqueue.Forget(obj)
+        return nil
+    }(obj)
+
+    if err != nil {
+        utilruntime.HandleError(err)
+    }
+
+    return true
+}
+
+
+
+
+func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.ParentResourceStatus, error) {
+    envVars := util.ExtractEnvVars(observed.Spec.Variables)
+    secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
+    log.Printf("Observed Parent Spec: %+v", observed.Spec)
+
+    commonStatus := v1alpha1.ParentResourceStatus{
+        State:   "Progressing",
+        Message: "Starting processing",
+    }
+
+    finalizing := false
+    // Check if the resource is being deleted
+    if observed.ObjectMeta.DeletionTimestamp != nil {
+        finalizing = true
+
+        // Add finalizer if not already present
+        finalizerName := "terraform.finalizer.alustan.io"
+        if !util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
+            observed.ObjectMeta.Finalizers = append(observed.ObjectMeta.Finalizers, finalizerName)
+            _, err := c.Clientset.CoreV1().RESTClient().
+                Put().
+                Namespace(observed.Namespace).
+                Resource("terraforms").
+                Name(observed.Name).
+                Body(observed).
+                Do(context.TODO()).
+                Get()
+            if err != nil {
+                return commonStatus, fmt.Errorf("error adding finalizer: %v", err)
+            }
+        }
+    }
+
+    // Handle script content
+    scriptContent, scriptContentStatus := terraform.GetScriptContent(observed, finalizing)
+    commonStatus = mergeStatuses(commonStatus, scriptContentStatus)
+    if scriptContentStatus.State == "Error" {
+        return commonStatus, fmt.Errorf("error getting script content")
+    }
+
+    // Handle tagged image name
+    taggedImageName, taggedImageStatus := registry.GetTaggedImageName(observed, scriptContent, c.Clientset, finalizing)
+    commonStatus = mergeStatuses(commonStatus, taggedImageStatus)
+    if taggedImageStatus.State == "Error" {
+        return commonStatus, fmt.Errorf("error getting tagged image name")
+    }
+
+    log.Printf("taggedImageName: %v", taggedImageName)
+
+    // Handle ExecuteTerraform
+    execTerraformStatus := terraform.ExecuteTerraform(c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
+    commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
+
+    if execTerraformStatus.State == "Error" {
+        return commonStatus, fmt.Errorf("error executing terraform")
+    }
+
+    return commonStatus, nil
+}
+
 
 func mergeStatuses(baseStatus, newStatus v1alpha1.ParentResourceStatus) v1alpha1.ParentResourceStatus {
     if newStatus.State != "" {
@@ -313,142 +406,39 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.ParentResourceStatus) v1alpha1
     return baseStatus
 }
 
-func (c *Controller) enqueue(obj interface{}) {
-	var key string
-	var err error
+func (c *Controller) updateStatus(parent *v1alpha1.Terraform, finalStatus v1alpha1.ParentResourceStatus) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		namespace := parent.Namespace
+		name := parent.Name
 
-	switch o := obj.(type) {
-	case v1alpha1.SyncRequest:
-		wrapped := SyncRequestWrapper{o}
-		key, err = cache.MetaNamespaceKeyFunc(&wrapped)
-	case string:
-		key = o
-	}
-
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object: %v, %w", obj, err))
-		return
-	}
-
-	c.workqueue.AddRateLimited(key)
-}
-
-
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-
-		if key, ok = obj.(string); !ok {
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %T", obj))
-			return nil
+		terraformObj, err := c.dynClient.Resource(schema.GroupVersionResource{
+			Group:    "alustan.io",
+			Version:  "v1alpha1",
+			Resource: "terraforms",
+		}).Namespace(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return err
 		}
 
-		if err := c.syncHandler(key); err != nil {
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		unstructuredContent := terraformObj.UnstructuredContent()
+		statusContent, err := json.Marshal(finalStatus)
+		if err != nil {
+			return err
 		}
 
-		c.workqueue.Forget(obj)
-		log.Printf("Successfully synced '%s'", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-func (c *Controller) updateStatus(observed v1alpha1.SyncRequest, status v1alpha1.ParentResourceStatus) error {
-	err := kubernetespkg.UpdateStatus(c.dynClient, observed.Parent.ObjectMeta.Namespace, observed.Parent.ObjectMeta.Name, status)
-	if err != nil {
-		log.Printf("Error updating status for %s: %v", observed.Parent.ObjectMeta.Name, err)
-	}
-	return err
-}
-
-
-func (c *Controller) syncHandler(key string) error {
-	// Retrieve the observed SyncRequest from the map
-	c.mapMutex.Lock()
-	observed, exists := c.observedMap[key]
-	c.mapMutex.Unlock()
-
-	if !exists {
-		return fmt.Errorf("no observed SyncRequest found for key %s", key)
-	}
-
-	// Process the SyncRequest
-	finalStatus, err := c.handleSyncRequest(observed)
-	if err != nil {
-		finalStatus.State = "Error"
-		finalStatus.Message = err.Error()
-	}
-
-	// updateErr := c.updateStatus(observed, finalStatus)
-	// 	if updateErr != nil {
-	// 		log.Printf("Error updating status for %s: %v", observed.Parent.ObjectMeta.Name, updateErr)
-	// 	}
-
-	// Send the final status through the status channel
-	c.statusMutex.Lock()
-	statusChan, exists := c.statusMap[key]
-	c.statusMutex.Unlock()
-
-	if exists {
-		statusChan <- finalStatus
-	}
-
-	return nil
-}
-
-
-func (c *Controller) Reconcile(stopCh <-chan struct{}) {
-	ticker := time.NewTicker(c.syncInterval)
-	go c.runWorker()
-	for {
-		select {
-		case <-ticker.C:
-			c.reconcileLoop()
-			c.lastSyncTime = time.Now()
-		case <-stopCh:
-			ticker.Stop()
-			c.workqueue.ShutDown()
-			return
+		statusMap := make(map[string]interface{})
+		if err := json.Unmarshal(statusContent, &statusMap); err != nil {
+			return err
 		}
-	}
+
+		unstructured.SetNestedMap(unstructuredContent, statusMap, "status")
+
+		_, updateErr := c.dynClient.Resource(schema.GroupVersionResource{
+			Group:    "alustan.io",
+			Version:  "v1alpha1",
+			Resource: "terraforms",
+		}).Namespace(namespace).UpdateStatus(context.TODO(), terraformObj, metav1.UpdateOptions{})
+		return updateErr
+	})
 }
 
-func (c *Controller) reconcileLoop() {
-	log.Println("Starting reconciliation loop")
-	resourceList, err := c.dynClient.Resource(schema.GroupVersionResource{
-		Group:    "alustan.io",
-		Version:  "v1alpha1",
-		Resource: "terraforms",
-	}).Namespace("").List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		log.Printf("Error fetching Terraform resources: %v", err)
-		return
-	}
-
-	log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
-
-	for _, item := range resourceList.Items {
-		c.enqueue(item.GetName())
-	}
-}
