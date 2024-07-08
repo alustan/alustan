@@ -11,11 +11,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-
+    "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -26,11 +24,13 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/alustan/pkg/registry"
 	"github.com/alustan/api/v1alpha1"
 	"github.com/alustan/pkg/terraform"
 	"github.com/alustan/pkg/util"
     "github.com/alustan/pkg/listers"
+    
 )
 
 type Controller struct {
@@ -41,11 +41,12 @@ type Controller struct {
 	workqueue        workqueue.RateLimitingInterface
     terraformLister listers.TerraformLister
 	informerFactory  informers.SharedInformerFactory // Shared informer factory for Terraform resources
+    informer         cache.SharedIndexInformer       // Informer for Terraform resources
 }
 
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
     // Register the custom resource types with the global scheme
-    utilruntime.Must(v1alpha1.AddToScheme(runtime.NewScheme()))
+    utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 
     ctrl := &Controller{
         Clientset:       clientset,
@@ -55,6 +56,9 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
         workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
         informerFactory: informers.NewSharedInformerFactory(clientset, syncInterval),
     }
+
+    // Initialize informer
+	ctrl.initInformer()
 
     return ctrl
 }
@@ -78,7 +82,7 @@ func NewInClusterController(syncInterval time.Duration) *Controller {
 	return NewController(clientset, dynClient, syncInterval)
 }
 
-func (c *Controller) setupInformer(stopCh <-chan struct{}) {
+func (c *Controller) initInformer() {
     // Define the GroupVersionResource for the custom resource
     gvr := schema.GroupVersionResource{
         Group:    "alustan.io",
@@ -92,25 +96,23 @@ func (c *Controller) setupInformer(stopCh <-chan struct{}) {
         utilruntime.HandleError(fmt.Errorf("error creating informer for %s: %v", gvr.Resource, err))
         return
     }
-
-    // Get the informer object from the result
-    informerObj := informer.Informer()
+    c.informer = informer.Informer()
 
     // Set the lister for the custom resource
-    c.terraformLister = listers.NewTerraformLister(informerObj.GetIndexer())
+    c.terraformLister = listers.NewTerraformLister(c.informer.GetIndexer())
 
-    // Set up event handlers for when resources change or are added
-    informerObj.AddEventHandler(cache.ResourceEventHandlerFuncs{
+    // Add event handlers to the informer
+    c.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc:    c.handleAddTerraform,
         UpdateFunc: c.handleUpdateTerraform,
         DeleteFunc: c.handleDeleteTerraform,
     })
-
-    // Start the informer
-    go informerObj.Run(stopCh)
 }
 
-
+func (c *Controller) setupInformer(stopCh <-chan struct{}) {
+	// Start the informer
+	go c.informer.Run(stopCh)
+}
 
 
 func (c *Controller) handleAddTerraform(obj interface{}) {
@@ -144,70 +146,57 @@ func (c *Controller) enqueue(key string) {
 	c.workqueue.AddRateLimited(key)
 }
 
-
-
 func (c *Controller) RunLeader(stopCh <-chan struct{}) {
-    defer utilruntime.HandleCrash()
+	defer utilruntime.HandleCrash()
 
-    log.Println("Starting Terraform controller")
+	log.Println("Starting Terraform controller")
 
-    // Setup informers and listers
-    c.setupInformer(stopCh)
+	// Setup informers and listers
+	c.setupInformer(stopCh)
 
-    // Collect sync functions for all informers
-    informer, err := c.informerFactory.ForResource(schema.GroupVersionResource{
-        Group:    "alustan.io",
-        Version:  "v1alpha1",
-        Resource: "terraforms",
-    })
-    if err != nil {
-        log.Fatalf("Failed to get informer for resource: %v", err)
-    }
-    informerSynced := informer.Informer().HasSynced
+	// Wait for the informer's cache to sync
+	informerSynced := c.informer.HasSynced
+	if !cache.WaitForCacheSync(stopCh, informerSynced) {
+		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
+		return
+	}
 
-    if !cache.WaitForCacheSync(stopCh, informerSynced) {
-        utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
-        return
-    }
+	// Leader election configuration
+	id := util.GetUniqueID()
+	rl, err := resourcelock.New(
+		resourcelock.LeasesResourceLock,
+		"alustan",
+		"terraform-controller-lock",
+		c.Clientset.CoreV1(),
+		c.Clientset.CoordinationV1(),
+		resourcelock.ResourceLockConfig{
+			Identity: id,
+		},
+	)
+	if err != nil {
+		log.Fatalf("Failed to create resource lock: %v", err)
+	}
 
-    // Leader election configuration
-    id := util.GetUniqueID()
-    rl, err := resourcelock.New(
-        resourcelock.LeasesResourceLock,
-        "alustan",
-        "terraform-controller-lock",
-        c.Clientset.CoreV1(),
-        c.Clientset.CoordinationV1(),
-        resourcelock.ResourceLockConfig{
-            Identity: id,
-        },
-    )
-    if err != nil {
-        log.Fatalf("Failed to create resource lock: %v", err)
-    }
-
-    leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
-        Lock:          rl,
-        LeaseDuration: 15 * time.Second,
-        RenewDeadline: 10 * time.Second,
-        RetryPeriod:   2 * time.Second,
-        Callbacks: leaderelection.LeaderCallbacks{
-            OnStartedLeading: func(ctx context.Context) {
-                log.Println("Became leader, starting reconciliation loop")
-                // Start processing items
-                go c.runWorker()
-            },
-            OnStoppedLeading: func() {
-                log.Println("Lost leadership, stopping reconciliation loop")
-                // Stop processing items
-                c.workqueue.ShutDown()
-            },
-        },
-        ReleaseOnCancel: true,
-    })
+	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
+		Lock:          rl,
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				log.Println("Became leader, starting reconciliation loop")
+				// Start processing items
+				go c.runWorker()
+			},
+			OnStoppedLeading: func() {
+				log.Println("Lost leadership, stopping reconciliation loop")
+				// Stop processing items
+				c.workqueue.ShutDown()
+			},
+		},
+		ReleaseOnCancel: true,
+	})
 }
-
-
 
 func (c *Controller) runWorker() {
 	for c.processNextWorkItem() {
