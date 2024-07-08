@@ -10,10 +10,6 @@ version: 0.1.0
 
 appVersion: "0.1.0"
 
-dependencies:
-- name: metacontroller-helm
-  version: "4.11.14"
-  repository: "file://charts/metacontroller-helm"
 
 
 
