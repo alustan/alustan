@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: TerraformConfigSpec defines the desired state of Terraform
+            description: TerraformSpec defines the desired state of Terraform
             properties:
               containerRegistry:
                 description: ContainerRegistry defines the container registry settings
@@ -88,46 +88,35 @@ spec:
             - variables
             type: object
           status:
-            description: ParentResourceStatus defines the observed state of Terraform
+            description: TerraformStatus defines the observed state of Terraform
             properties:
               credentials:
-                description: |-
-                  RawMessage is a raw encoded JSON value.
-                  It implements [Marshaler] and [Unmarshaler] and can
-                  be used to delay JSON decoding or precompute a JSON encoding.
-                format: byte
-                type: string
-              finalized:
-                type: boolean
+                additionalProperties:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                type: object
               ingressURLs:
-                description: |-
-                  RawMessage is a raw encoded JSON value.
-                  It implements [Marshaler] and [Unmarshaler] and can
-                  be used to delay JSON decoding or precompute a JSON encoding.
-                format: byte
-                type: string
+                additionalProperties:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                type: object
               message:
                 type: string
               observedGeneration:
                 type: integer
               output:
-                description: |-
-                  RawMessage is a raw encoded JSON value.
-                  It implements [Marshaler] and [Unmarshaler] and can
-                  be used to delay JSON decoding or precompute a JSON encoding.
-                format: byte
-                type: string
+                additionalProperties:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                type: object
               postDeployOutput:
-                description: |-
-                  RawMessage is a raw encoded JSON value.
-                  It implements [Marshaler] and [Unmarshaler] and can
-                  be used to delay JSON decoding or precompute a JSON encoding.
-                format: byte
-                type: string
+                additionalProperties:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                type: object
               state:
                 type: string
             required:
-            - finalized
             - message
             - state
             type: object
