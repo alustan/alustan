@@ -1,3 +1,10 @@
+# #####################################
+
+#  base image sample to build an OCI image of your infra backend
+
+# #####################################
+
+
 # Stage 1: Build stage
 FROM ubuntu:22.04 AS builder
 
