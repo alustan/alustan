@@ -31,10 +31,13 @@ func UpdateStatus(logger *zap.SugaredLogger, dynClient dynamic.Interface, namesp
 
 		logger.Infof("Fetched resource: %v", unstructuredResource)
 
-		// Check if the status subresource is defined
-		if _, found := unstructuredResource.Object["status"]; !found {
+		// Inspect the resource content
+		if statusField, found := unstructuredResource.Object["status"]; !found {
 			logger.Errorf("Status subresource not found for resource %s in namespace %s", name, namespace)
+			logger.Debugf("Resource content: %+v", unstructuredResource.Object)
 			return errors.New("status subresource not defined")
+		} else {
+			logger.Infof("Found status field: %v", statusField)
 		}
 
 		logger.Infof("Status subresource found for resource %s in namespace %s", name, namespace)
@@ -60,4 +63,3 @@ func UpdateStatus(logger *zap.SugaredLogger, dynClient dynamic.Interface, namesp
 
 	return nil
 }
-
