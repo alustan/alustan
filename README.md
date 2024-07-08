@@ -201,30 +201,9 @@ postDeploy:
 
 ``` 
 
-> **The output of your `postDeploy` script should match `map[string]interface{}` with `outputs` key at top level**
+> **The output of your `postDeploy` script should match `(map[string]interface{}` with `outputs` key at top level**
 
-```yaml
-{
-    "outputs": {
-      "LoadBalancer": [
-        {
-            "LoadBalancerName": "example-alb",
-            "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
-            "Type": "application",
-            "Scheme": "internet-facing",
-            "State": "active",
-            "Tags": [
-                {"Key": "Blueprint", "Value": "staging"}
-            ]
-        }
-        
-      ]
-    
-    }
-}
- 
-
-```
+> **key: is a `string` body: `any arbitrary data structure`**
 
 > **Output in status field looks like this:** 
 
