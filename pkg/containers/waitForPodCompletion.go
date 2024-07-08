@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	
 	"strconv"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output from the associated pod.
-func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
+func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
 	for {
 		// Retrieve the current state of the pod
 		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
@@ -24,17 +25,17 @@ func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName str
 		}
 
 		// Log the current pod phase
-		log.Printf("Pod %s is in phase %s", podName, pod.Status.Phase)
+		logger.Infof("Pod %s is in phase %s", podName, pod.Status.Phase)
 
 		// Check if the pod has succeeded
 		if pod.Status.Phase == v1.PodSucceeded {
-			log.Printf("Pod %s has succeeded", podName)
+			logger.Infof("Pod %s has succeeded", podName)
 			break
 		}
 
 		// Check if the pod has failed
 		if pod.Status.Phase == v1.PodFailed {
-			log.Printf("Pod %s has failed", podName)
+			logger.Infof("Pod %s has failed", podName)
 			return nil, fmt.Errorf("pod %s failed", podName)
 		}
 
@@ -106,7 +107,7 @@ func WaitForPodCompletion(clientset kubernetes.Interface, namespace, podName str
 	}
 
 	// Log the final outputs
-	log.Printf("Final Outputs: %+v", outputs)
+	logger.Infof("Final Outputs: %+v", outputs)
 
 	// Return the extracted outputs
 	return outputs, nil

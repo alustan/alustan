@@ -3,7 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
-	"log"
+	
 	"os"
 
 	"github.com/Masterminds/semver/v3"
@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"go.uber.org/zap"
 
 	"github.com/alustan/pkg/imagetag"
 	"github.com/alustan/pkg/util"
@@ -19,6 +20,7 @@ import (
 )
 
 func GetTaggedImageName(
+	logger *zap.SugaredLogger,
 	observed *v1alpha1.Terraform,
 	scriptContent string,
 	clientset kubernetes.Interface,
@@ -29,17 +31,18 @@ func GetTaggedImageName(
 	if finalizing {
 		taggedImageName, err := getTaggedImageNameFromConfigMap(clientset, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name)
 		if err != nil {
-			status = util.ErrorResponse("retrieving tagged image name", err)
+			status = util.ErrorResponse(logger,"retrieving tagged image name", err)
 			return "", status
 		}
 		return taggedImageName, status
 	}
 
-	taggedImageName, status := handleContainerRegistry(observed, scriptContent, clientset)
+	taggedImageName, status := handleContainerRegistry(logger,observed, scriptContent, clientset)
 	return taggedImageName, status
 }
 
 func handleContainerRegistry(
+	logger *zap.SugaredLogger,
 	observed *v1alpha1.Terraform,
 	scriptContent string,
 	clientset kubernetes.Interface,
@@ -48,43 +51,43 @@ func handleContainerRegistry(
 
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {
-		log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
-		status = util.ErrorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
+		logger.Info("Environment variable CONTAINER_REGISTRY_SECRET is not set")
+		status = util.ErrorResponse(logger,"creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
 		return "", status
 	}
 
 	secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
-	_, token, err := containers.CreateDockerConfigSecret(clientset, secretName, observed.ObjectMeta.Namespace, encodedDockerConfigJSON)
+	_, token, err := containers.CreateDockerConfigSecret(logger,clientset, secretName, observed.ObjectMeta.Namespace, encodedDockerConfigJSON)
 	if err != nil {
-		status = util.ErrorResponse("creating Docker config secret", err)
+		status = util.ErrorResponse(logger,"creating Docker config secret", err)
 		return "", status
 	}
 
 	provider := observed.Spec.ContainerRegistry.Provider
 	registryClient, err := getRegistryClient(provider, token)
 	if err != nil {
-		status = util.ErrorResponse("creating registry client", err)
+		status = util.ErrorResponse(logger,"creating registry client", err)
 		return "", status
 	}
 
 	image := observed.Spec.ContainerRegistry.ImageName
 	tags, err := registryClient.GetTags(image)
 	if err != nil {
-		status = util.ErrorResponse("fetching image tags", err)
+		status = util.ErrorResponse(logger,"fetching image tags", err)
 		return "", status
 	}
 
 	semanticVersion := observed.Spec.ContainerRegistry.SemanticVersion
 	latestTag, err := getLatestTag(tags, semanticVersion)
 	if err != nil {
-		status = util.ErrorResponse("determining latest image tag", err)
+		status = util.ErrorResponse(logger,"determining latest image tag", err)
 		return "", status
 	}
 
 	taggedImageName := fmt.Sprintf("%s:%s", image, latestTag)
 	err = updateTaggedImageConfigMap(clientset, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, taggedImageName)
 	if err != nil {
-		status = util.ErrorResponse("updating image tag in configmap", err)
+		status = util.ErrorResponse(logger,"updating image tag in configmap", err)
 		return "", status
 	}
 

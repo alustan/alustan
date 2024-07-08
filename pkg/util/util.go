@@ -4,9 +4,10 @@ package util
 import (
 	
 	"fmt"
-	"log"
+	
 	"github.com/google/uuid"
 	"github.com/alustan/api/v1alpha1"
+	"go.uber.org/zap"
 
 )
 
@@ -32,8 +33,8 @@ func RemoveString(slice []string, str string) []string {
 	return slice
 }
 
-func ErrorResponse(action string, err error) v1alpha1.TerraformStatus {
-	log.Printf("Error %s: %v", action, err)
+func ErrorResponse(logger *zap.SugaredLogger,action string, err error) v1alpha1.TerraformStatus {
+	logger.Infof("Error %s: %v", action, err)
 	return v1alpha1.TerraformStatus{
 		State:   "Error",
 		Message: fmt.Sprintf("Error %s: %v", action, err),

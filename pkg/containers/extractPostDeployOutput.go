@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
+	"go.uber.org/zap"
 	CoreV1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // ExtractPostDeployOutput retrieves and parses the outputs from a pod's log
-func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
+func ExtractPostDeployOutput(logger *zap.SugaredLogger,clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
 	for {
 		// Retrieve the current state of the pod
 		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
@@ -23,17 +23,17 @@ func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName 
 		}
 
 		// Log the current pod phase
-		log.Printf("Pod %s is in phase %s", podName, pod.Status.Phase)
+		logger.Infof("Pod %s is in phase %s", podName, pod.Status.Phase)
 
 		// Check if the pod has succeeded
 		if pod.Status.Phase == CoreV1.PodSucceeded {
-			log.Printf("Pod %s has succeeded", podName)
+			logger.Infof("Pod %s has succeeded", podName)
 			break
 		}
 
 		// Check if the pod has failed
 		if pod.Status.Phase == CoreV1.PodFailed {
-			log.Printf("Pod %s has failed", podName)
+			logger.Infof("Pod %s has failed", podName)
 			return nil, fmt.Errorf("pod %s failed", podName)
 		}
 
@@ -68,7 +68,7 @@ func ExtractPostDeployOutput(clientset kubernetes.Interface, namespace, podName 
 	}
 
 	// Log the final outputs
-	log.Printf("Final Outputs: %+v", outputs)
+	logger.Infof("Final Outputs: %+v", outputs)
 
 	return outputs, nil
 }

@@ -2,24 +2,25 @@ package util
 
 import (
 	"context"
-	"log"
+	
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // GetDataFromSecret retrieves the SSH key from a Kubernetes Secret
-func GetDataFromSecret(clientset  kubernetes.Interface, namespace, secretName, keyName string) (string, error) {
+func GetDataFromSecret(logger *zap.SugaredLogger,clientset  kubernetes.Interface, namespace, secretName, keyName string) (string, error) {
 	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to get secret '%s': %v", secretName, err)
+		logger.Infof("Failed to get secret '%s': %v", secretName, err)
 		return "", err
 	}
 
 	sshKey, ok := secret.Data[keyName]
 	if !ok {
-		errMsg := logErrorAndReturn("Key '%s' not found in secret '%s'", keyName, secretName)
+		errMsg := logErrorAndReturn(logger,"Key '%s' not found in secret '%s'", keyName, secretName)
 		return "", errMsg
 	}
 
@@ -27,8 +28,8 @@ func GetDataFromSecret(clientset  kubernetes.Interface, namespace, secretName, k
 }
 
 // logErrorAndReturn logs the error and returns it
-func logErrorAndReturn(format string, args ...interface{}) error {
+func logErrorAndReturn(logger *zap.SugaredLogger,format string, args ...interface{}) error {
 	err := fmt.Errorf(format, args...)
-	log.Println(err)
+	logger.Info(err)
 	return err
 }
