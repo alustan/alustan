@@ -306,14 +306,23 @@ func (c *Controller) processNextWorkItem() bool {
 		terraformObject, err := c.terraformLister.Terraform(namespace).Get(name)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				// Resource no longer exists, forget the key
+				// Resource no longer exists, forget the key and log as info
 				c.workqueue.Forget(obj)
+				c.logger.Infof("resource %s/%s no longer exists", namespace, name)
 				return nil
 			}
-
-			c.workqueue.AddRateLimited(key)
-			c.logger.Errorf("error fetching resource %s: %v", key, err)
-			return fmt.Errorf("error fetching resource %s: %v", key, err)
+			// For other errors, decide whether to requeue or not
+			if errors.IsInternalError(err) || errors.IsServerTimeout(err) {
+				// These are considered transient errors, requeue the item
+				c.workqueue.AddRateLimited(key)
+				c.logger.Errorf("transient error fetching resource %s: %v", key, err)
+				return fmt.Errorf("transient error fetching resource %s: %v", key, err)
+			} else {
+				// Non-transient errors, do not requeue the item
+				c.workqueue.Forget(obj)
+				c.logger.Errorf("non-transient error fetching resource %s: %v", key, err)
+				return fmt.Errorf("non-transient error fetching resource %s: %v", key, err)
+			}
 		}
 
 		terraformObj := terraformObject.DeepCopyObject()
@@ -343,6 +352,9 @@ func (c *Controller) processNextWorkItem() bool {
 		if gen > observedGeneration {
 			// Perform synchronization and update observed generation
 			finalStatus, err := c.handleSyncRequest(terraform)
+			if finalStatus.Message == "Destroy completed successfully" {
+               return nil
+			}
 			if err != nil {
 				finalStatus.State = "Error"
 				finalStatus.Message = err.Error()
@@ -352,7 +364,7 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 
 			finalStatus.ObservedGeneration = gen
-			updateErr := c.updateStatus(terraform,finalStatus)
+			updateErr := c.updateStatus(terraform, finalStatus)
 			if updateErr != nil {
 				c.logger.Infof("Failed to update status for %s: %v", key, updateErr)
 				c.workqueue.AddRateLimited(key)

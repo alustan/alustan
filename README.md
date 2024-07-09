@@ -80,10 +80,17 @@ spec:
 status:
   state: "Progressing"
   message: "Starting processing"
+  observedGeneration: 1
   output: {
-      "aws_certificate_arn": "aws_certificate_arn",
-      "service_account_role_arn": "service_account_role_arn",
-      "db_instance_address": "db_instance_address"
+      "aws_certificate_arn": {
+        "value": "aws_certificate_arn",
+      } 
+      "service_account_role_arn": {
+        "value": "service_account_role_arn",
+      } 
+      "db_instance_address": {
+        "value": "db_instance_address"
+      } 
     }
     
   ingressURLs: {
@@ -97,11 +104,19 @@ status:
     }
     
   credentials:  {
-      "argocdUsername": "admin",
-      "argocdPassword": "exampleArgoCDPassword",
-      "grafanaUsername": "admin",
-      "grafanaPassword": "exampleGrafanaPassword"
-    }
+      "argocdPassword": {
+        "value": ""
+      },
+      "argocdUsername": {
+        "value": "admin"
+      },
+      "grafanaPassword": {
+        "value": ""
+      },
+      "grafanaUsername": {
+        "value": "admin"
+      }
+     }
    
   postDeployOutput: {
   "externalresources": {
