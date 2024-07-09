@@ -2,7 +2,7 @@ package controller
 
 import (
 	"context"
-	
+	"sync"
 	"fmt"
 	
 	"time"
@@ -41,6 +41,12 @@ type Controller struct {
 	informerFactory  dynamicinformer.DynamicSharedInformerFactory // Shared informer factory for Terraform resources
 	informer         cache.SharedIndexInformer                    // Informer for Terraform resources
 	logger           *zap.SugaredLogger
+	mu               sync.Mutex
+	numWorkers       int
+	maxWorkers       int
+	workerStopCh  chan struct{}
+    managerStopCh chan struct{}
+	
 }
 
 
@@ -57,7 +63,12 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
 		informerFactory: dynamicinformer.NewDynamicSharedInformerFactory(dynClient, syncInterval),
 		logger:          sugar,
+		numWorkers:      0,
+		maxWorkers:      5,
+		workerStopCh:    make(chan struct{}),
+		managerStopCh:    make(chan struct{}),
 	}
+	
 
 	// Initialize informer
 	ctrl.initInformer()
@@ -190,22 +201,84 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("Became leader, starting reconciliation loop")
 				// Start processing items
-				go c.runWorker()
+				go c.manageWorkers()
 			},
 			OnStoppedLeading: func() {
 				c.logger.Info("Lost leadership, stopping reconciliation loop")
 				// Stop processing items
-				c.workqueue.ShutDown()
+				close(c.workerStopCh)  // Stop all individual runWorker functions
+				close(c.managerStopCh) // Stop the manageWorkers function
+                c.workqueue.ShutDown()
 			},
 		},
 		ReleaseOnCancel: true,
 	})
 }
 
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
+func (c *Controller) manageWorkers() {
+	for {
+		select {
+		case <-c.managerStopCh:
+		  return // Stops the manageWorkers loop
+        default:
+			queueLength := c.workqueue.Len()
+
+			c.mu.Lock()
+			currentWorkers := c.numWorkers
+			c.mu.Unlock()
+
+			// Calculate the desired number of workers based on the queue length
+			// spawn a new runworker routine for every queue length greater than 20 vice versa
+			desiredWorkers := (queueLength / 20) + 1
+			if desiredWorkers > c.maxWorkers {
+				desiredWorkers = c.maxWorkers
+			}
+
+			// Ensure at least one worker is running
+			if desiredWorkers < 1 {
+				desiredWorkers = 1
+			}
+
+			// Increase workers if needed
+			if currentWorkers < desiredWorkers {
+				for i := currentWorkers; i < desiredWorkers; i++ {
+					go c.runWorker()
+					c.mu.Lock()
+					c.numWorkers++
+					c.mu.Unlock()
+				}
+			}
+
+			// Decrease workers if needed, but ensure at least one worker is running
+			if currentWorkers > desiredWorkers {
+				for i := currentWorkers; i > desiredWorkers && i > 1; i-- {
+					c.mu.Lock()
+					c.numWorkers--
+					c.mu.Unlock()
+					c.workerStopCh <- struct{}{} // Signal a worker to stop
+
+				}
+			}
+
+			time.Sleep(1 * time.Minute)
+		}
 	}
 }
+
+
+func (c *Controller) runWorker() {
+    for {
+        select {
+        case <-c.workerStopCh:
+            return // Stops the individual worker
+        default:
+            if !c.processNextWorkItem() {
+                return
+            }
+        }
+    }
+}
+
 
 func (c *Controller) processNextWorkItem() bool {
 	obj, shutdown := c.workqueue.Get()
@@ -320,6 +393,7 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
 	 finalizing := false
     // Check if the resource is being deleted
     if observed.ObjectMeta.DeletionTimestamp != nil {
+		
         finalizing = true
     }
 
