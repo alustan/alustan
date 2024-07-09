@@ -2,6 +2,7 @@ package containers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -72,14 +73,13 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 		if line == "" {
 			continue
 		}
-
 		if strings.HasPrefix(line, "Outputs:") {
 			outputSection = true
 			continue
 		}
 
 		if outputSection {
-			if strings.TrimSpace(line) == "" {
+			if line == "" {
 				break
 			}
 
@@ -94,22 +94,38 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 					value = value[1 : len(value)-1]
 				}
 
+				var parsedValue interface{}
+				
 				// Try to parse value as int, float, bool, or fallback to string
 				if intValue, err := strconv.Atoi(value); err == nil {
-					outputs[key] = intValue
+					parsedValue = intValue
 				} else if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
-					outputs[key] = floatValue
+					parsedValue = floatValue
 				} else if boolValue, err := strconv.ParseBool(value); err == nil {
-					outputs[key] = boolValue
+					parsedValue = boolValue
 				} else {
-					outputs[key] = value
+					parsedValue = value
 				}
+
+				// Log the type and value for debugging
+				logger.Infof("Output Key: %s, Value: %v, Type: %T", key, parsedValue, parsedValue)
+
+				outputs[key] = parsedValue
 			}
 		}
 	}
 
 	// Log the final outputs
 	logger.Infof("Final Outputs: %+v", outputs)
+
+	// Attempt to marshal the outputs to JSON to catch any errors
+	outputsJSON, err := json.Marshal(outputs)
+	if err != nil {
+		logger.Errorf("Error marshaling outputs to JSON: %v", err)
+		return nil, fmt.Errorf("error marshaling outputs to JSON: %v", err)
+	}
+
+	logger.Infof("Outputs JSON: %s", string(outputsJSON))
 
 	// Return the extracted outputs
 	return outputs, nil
