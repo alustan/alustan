@@ -60,7 +60,7 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 	// Convert the logs to a string and remove ANSI escape codes
 	logsString := removeANSIEscapeCodes(string(logsBytes))
-	logger.Infof("Raw Pod Logs: %s", logsString) // Log the raw pod logs for debugging
+
 
 	lines := strings.Split(logsString, "\n")
 
