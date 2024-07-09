@@ -54,12 +54,16 @@ func FetchCredentials(clientset kubernetes.Interface) (map[string]interface{}, e
 		credentials.GrafanaPassword = string(grafanaPassword)
 	}
 
-	// Return the credentials as a map
+	// Return the credentials as a map with object structure for passwords
 	credentialsMap := map[string]interface{}{
-		"argocdUsername":  credentials.ArgoCDUsername,
-		"argocdPassword":  credentials.ArgoCDPassword,
+		"argocdUsername": credentials.ArgoCDUsername,
+		"argocdPassword": map[string]interface{}{
+			"value": credentials.ArgoCDPassword,
+		},
 		"grafanaUsername": credentials.GrafanaUsername,
-		"grafanaPassword": credentials.GrafanaPassword,
+		"grafanaPassword": map[string]interface{}{
+			"value": credentials.GrafanaPassword,
+		},
 	}
 
 	return credentialsMap, nil

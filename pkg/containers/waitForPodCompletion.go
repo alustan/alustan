@@ -61,7 +61,6 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 	// Convert the logs to a string and remove ANSI escape codes
 	logsString := removeANSIEscapeCodes(string(logsBytes))
 
-
 	lines := strings.Split(logsString, "\n")
 
 	outputSection := false
@@ -88,14 +87,14 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 			if len(parts) == 2 {
 				key := strings.TrimSpace(parts[0])
 				value := strings.TrimSpace(parts[1])
-				
+
 				// Remove quotes from value if present
 				if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 					value = value[1 : len(value)-1]
 				}
 
 				var parsedValue interface{}
-				
+
 				// Try to parse value as int, float, bool, or fallback to string
 				if intValue, err := strconv.Atoi(value); err == nil {
 					parsedValue = intValue
@@ -110,7 +109,9 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 				// Log the type and value for debugging
 				logger.Infof("Output Key: %s, Value: %v, Type: %T", key, parsedValue, parsedValue)
 
-				outputs[key] = parsedValue
+				outputs[key] = map[string]interface{}{
+					"value": parsedValue,
+				}
 			}
 		}
 	}
