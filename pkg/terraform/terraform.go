@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"encoding/json"
 	"strings"
+	"context"
+	"time"
 	
      
 	"go.uber.org/zap"
@@ -11,6 +13,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubernetesPkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/util"
@@ -41,7 +45,7 @@ func GetScriptContent(logger *zap.SugaredLogger, observed *v1alpha1.Terraform, f
 }
 
 func ExecuteTerraform(
-	logger *zap.SugaredLogger, 
+	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
 	dynamicClient dynamic.Interface,
 	observed *v1alpha1.Terraform,
@@ -58,9 +62,7 @@ func ExecuteTerraform(
 			Message: "Running Terraform Destroy",
 		}
 
-		status = runDestroy(logger, clientset,dynamicClient, observed, scriptContent, taggedImageName, secretName, envVars)
-
-	
+		status = runDestroy(logger, clientset, dynamicClient, observed, scriptContent, taggedImageName, secretName, envVars)
 
 		return status
 	}
@@ -72,44 +74,37 @@ func ExecuteTerraform(
 
 	status = runApply(logger, clientset, observed, scriptContent, taggedImageName, secretName, envVars)
 
-	status = v1alpha1.TerraformStatus{
-		State:   status.State,
-		Message: status.Message,
-		Output: status.Output,
+	// Preserve any existing status fields in the TerraformStatus struct
+	finalStatus := v1alpha1.TerraformStatus{
+		State:       status.State,
+		Message:     status.Message,
+		Output:      status.Output,
 		IngressURLs: status.IngressURLs,
 		Credentials: status.Credentials,
-    }
+	}
 
 	if status.State == "Failed" {
-		return status
+		return finalStatus
 	}
 
 	if observed.Spec.PostDeploy.Script != "" {
-		status = v1alpha1.TerraformStatus{
-			State:   "Progressing",
-			Message: "Running postDeploy script",
-		}
+		finalStatus.State = "Progressing"
+		finalStatus.Message = "Running postDeploy script"
 
-		postDeployOutput, err := runPostDeploy(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, observed.Spec.PostDeploy, envVars, taggedImageName, secretName)
+		postDeployOutput, err := runPostDeploy(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, observed.Spec.PostDeploy, envVars, taggedImageName, secretName)
 		if err != nil {
-			status = util.ErrorResponse(logger,"executing postDeploy script", err)
-			return status
+			return util.ErrorResponse(logger, "executing postDeploy script", err)
 		}
 
-
-		status = v1alpha1.TerraformStatus{
-			State:            "Completed",
-			Message:          "Processing completed successfully",
-			PostDeployOutput: postDeployOutput,
-		}
+		finalStatus.State = "Completed"
+		finalStatus.Message = "Processing completed successfully"
+		finalStatus.PostDeployOutput = postDeployOutput
 	} else {
-		status = v1alpha1.TerraformStatus{
-			State:   "Completed",
-			Message: "Processing completed successfully",
-		}
+		finalStatus.State = "Completed"
+		finalStatus.Message = "Processing completed successfully"
 	}
 
-	return status
+	return finalStatus
 }
 
 func runApply(
@@ -207,6 +202,7 @@ func runDestroy(
 	envVars map[string]string,
 ) v1alpha1.TerraformStatus {
 	var status v1alpha1.TerraformStatus
+	var podName string
 
 	if scriptContent == "" {
 		status.State = "Success"
@@ -219,7 +215,9 @@ func runDestroy(
 		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
+		podName, terraformErr = containers.CreateOrUpdateRunPod(
+			logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy",
+		)
 		return terraformErr
 	})
 
@@ -228,6 +226,41 @@ func runDestroy(
 		status.Message = terraformErr.Error()
 		return status
 	}
+
+	// Wait for the destroy pod to complete and check its status
+	for {
+		// Retrieve the current state of the pod
+		pod, err := clientset.CoreV1().Pods(observed.ObjectMeta.Namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil {
+			logger.Errorf("Failed to get pod %s/%s: %v", observed.ObjectMeta.Namespace, podName, err)
+			status.State = "Failed"
+			status.Message = fmt.Sprintf("Failed to get pod: %v", err)
+			return status
+		}
+
+		// Log the current pod phase
+		logger.Infof("Pod %s is in phase %s", podName, pod.Status.Phase)
+
+		// Check if the pod has succeeded
+		if pod.Status.Phase == v1.PodSucceeded {
+			logger.Infof("Pod %s has succeeded", podName)
+			break
+		}
+
+		// Check if the pod has failed
+		if pod.Status.Phase == v1.PodFailed {
+			logger.Infof("Pod %s has failed", podName)
+			status.State = "Failed"
+			status.Message = fmt.Sprintf("pod %s failed", podName)
+			return status
+		}
+
+		// Sleep for 1 minute before checking again
+		time.Sleep(1 * time.Minute)
+	}
+
+	logger.Info("Terraform Destroy successful")
+	logger.Info("Removing finalizers")
 
 	// If successful, remove finalizer
 	err := kubernetesPkg.RemoveFinalizer(logger, dynamicClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
@@ -238,6 +271,8 @@ func runDestroy(
 		return status
 	}
 
+	status.State = "Success"
+	status.Message = "Destroy completed successfully"
 	return status
 }
 
