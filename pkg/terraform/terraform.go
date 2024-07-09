@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/apimachinery/pkg/runtime"
-	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/client-go/dynamic"
 
 	kubernetesPkg "github.com/alustan/pkg/kubernetes"
@@ -288,16 +287,20 @@ func runPostDeploy(
 	return convertedOutput, nil
 }
 
-
+// convertToRawExtensionMap converts a map[string]interface{} to map[string]runtime.RawExtension
 func convertToRawExtensionMap(input map[string]interface{}) (map[string]runtime.RawExtension, error) {
-	result := make(map[string]runtime.RawExtension)
-	encoder := runtimejson.NewSerializerWithOptions(runtimejson.DefaultMetaFactory, nil, nil, runtimejson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
+    result := make(map[string]runtime.RawExtension)
+
 	for key, value := range input {
-		raw, err := runtime.Encode(encoder, &runtime.Unknown{Raw: []byte(fmt.Sprintf("%v", value))})
-		if err != nil {
-			return nil, err
-		}
-		result[key] = runtime.RawExtension{Raw: raw}
-	}
-	return result, nil
+        // Marshal each value to JSON
+        raw, err := json.Marshal(value)
+        if err != nil {
+            return nil, fmt.Errorf("error marshaling value for key %s to JSON: %v", key, err)
+        }
+        
+		// Encode to runtime.RawExtension
+        result[key] = runtime.RawExtension{Raw: raw}
+    }
+
+    return result, nil
 }
