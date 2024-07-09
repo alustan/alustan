@@ -2,7 +2,7 @@ package terraform
 
 import (
 	"fmt"
-	
+	"encoding/json"
 	"strings"
 	
      
@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer/json"
+	runtimejson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/client-go/dynamic"
 
 	kubernetesPkg "github.com/alustan/pkg/kubernetes"
@@ -113,7 +113,6 @@ func ExecuteTerraform(
 	return status
 }
 
-
 func runApply(
 	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
@@ -129,7 +128,7 @@ func runApply(
 		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		podName, terraformErr = containers.CreateOrUpdateRunPod(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		podName, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -142,10 +141,18 @@ func runApply(
 		return status
 	}
 
-	outputs, err := containers.WaitForPodCompletion(logger,clientset, observed.ObjectMeta.Namespace, podName)
+	outputs, err := containers.WaitForPodCompletion(logger, clientset, observed.ObjectMeta.Namespace, podName)
 	if err != nil {
 		status.State = "Failed"
 		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
+		return status
+	}
+
+	// Validate outputs can be marshaled to JSON
+	_, err = json.Marshal(outputs)
+	if err != nil {
+		status.State = "Failed"
+		status.Message = fmt.Sprintf("Error marshaling outputs to JSON: %v", err)
 		return status
 	}
 
@@ -157,6 +164,7 @@ func runApply(
 	}
 	status.Output = convertedOutputs
 
+	// Fetch and validate Ingress URLs
 	ingressURLs, err := kubernetesPkg.GetAllIngressURLs(clientset)
 	if err != nil {
 		status.State = "Failed"
@@ -172,6 +180,7 @@ func runApply(
 	}
 	status.IngressURLs = convertedIngressURLs
 
+	// Fetch and validate Credentials
 	credentials, err := kubernetesPkg.FetchCredentials(clientset)
 	if err != nil {
 		status.State = "Failed"
@@ -282,7 +291,7 @@ func runPostDeploy(
 
 func convertToRawExtensionMap(input map[string]interface{}) (map[string]runtime.RawExtension, error) {
 	result := make(map[string]runtime.RawExtension)
-	encoder := json.NewSerializerWithOptions(json.DefaultMetaFactory, nil, nil, json.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
+	encoder := runtimejson.NewSerializerWithOptions(runtimejson.DefaultMetaFactory, nil, nil, runtimejson.SerializerOptions{Yaml: false, Pretty: false, Strict: false})
 	for key, value := range input {
 		raw, err := runtime.Encode(encoder, &runtime.Unknown{Raw: []byte(fmt.Sprintf("%v", value))})
 		if err != nil {
