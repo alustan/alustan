@@ -104,47 +104,42 @@ status:
     }
    
   postDeployOutput: {
-   "outputs": {
-     "cloudresources": {
-     "EC2": [
-        {
-          "InstanceID": "i-1234567890abcdef0",
+    "externalresources": [
+      {
+        "Service": "EC2",
+        "Resource": {
+          "InstanceID": "i-0123456789abcdef0",
           "InstanceType": "t2.micro",
           "State": "running",
           "Tags": [
             {
               "Key": "Name",
-              "Value": "MyInstance"
-            }
-          ]
-        },
-        {
-          "InstanceID": "i-0987654321abcdef0",
-          "InstanceType": "t3.medium",
-          "State": "stopped",
-          "Tags": [
+              "Value": "ExampleInstance"
+            },
             {
-              "Key": "Name",
-              "Value": "YourInstance"
+              "Key": "Blueprint",
+              "Value": "staging"
             }
           ]
         }
-      ],
-      "RDS": [
-        {
-          "DBInstanceIdentifier": "my-db-instance",
-          "DBInstanceClass": "db.t3.medium",
+      },
+      {
+        "Service": "RDS",
+        "Resource": {
+          "DBInstanceIdentifier": "mydbinstance",
+          "DBInstanceClass": "db.t2.micro",
           "DBInstanceStatus": "available",
           "Tags": [
             {
-              "Key": "Environment",
-              "Value": "Production"
+              "Key": "Blueprint",
+              "Value": "staging"
             }
           ]
         }
-      ],
-      "LoadBalancer": [
-        {
+      },
+      {
+        "Service": "LoadBalancer",
+        "Resource": {
           "LoadBalancerName": "example-alb",
           "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
           "Type": "application",
@@ -157,11 +152,12 @@ status:
             }
           ]
         }
-      ]
-    }
-
-   }
+      }
+      
+    ]
+    
 }
+ 
 
 ```
 
@@ -210,66 +206,25 @@ postDeploy:
 
 ```yaml
 {
-   "outputs": {
-     "cloudresources": {
-     "EC2": [
-        {
-          "InstanceID": "i-1234567890abcdef0",
-          "InstanceType": "t2.micro",
-          "State": "running",
-          "Tags": [
-            {
-              "Key": "Name",
-              "Value": "MyInstance"
-            }
-          ]
-        },
-        {
-          "InstanceID": "i-0987654321abcdef0",
-          "InstanceType": "t3.medium",
-          "State": "stopped",
-          "Tags": [
-            {
-              "Key": "Name",
-              "Value": "YourInstance"
-            }
-          ]
-        }
-      ],
-      "RDS": [
-        {
-          "DBInstanceIdentifier": "my-db-instance",
-          "DBInstanceClass": "db.t3.medium",
+  "outputs": {
+    "externalresources": [
+      {
+        "Service": "RDS",
+        "Resource": {
+          "DBInstanceIdentifier": "mydbinstance",
+          "DBInstanceClass": "db.t2.micro",
           "DBInstanceStatus": "available",
           "Tags": [
             {
-              "Key": "Environment",
-              "Value": "Production"
+              "Key": "Blueprint",
+              "Value": "staging"
             }
           ]
         }
-      ],
-      "LoadBalancer": [
-        {
-          "LoadBalancerName": "example-alb",
-          "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
-          "Type": "application",
-          "Scheme": "internet-facing",
-          "State": "active",
-          "Tags": [
-            {
-              "Key": "Environment",
-              "Value": "Development"
-            }
-          ]
-        }
-      ]
-    }
-
-   }
-
+      }
+     ]
+  }
 }
-    
 
 ```
 
