@@ -15,12 +15,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// removeAnsiCodes removes ANSI escape codes from the given string.
-func removeAnsiCodes(input string) string {
-	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	return re.ReplaceAllString(input, "")
-}
-
 // WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output from the associated pod.
 func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
 	for {
@@ -63,8 +57,10 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 		return nil, err
 	}
 
-	// Convert the logs to a string and split into lines
-	logsString := string(logsBytes)
+	// Convert the logs to a string and remove ANSI escape codes
+	logsString := removeANSIEscapeCodes(string(logsBytes))
+	logger.Infof("Raw Pod Logs: %s", logsString) // Log the raw pod logs for debugging
+
 	lines := strings.Split(logsString, "\n")
 
 	outputSection := false
@@ -72,7 +68,7 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 	// Parse the logs to extract the "Outputs:" section
 	for _, line := range lines {
-		line = strings.TrimSpace(removeAnsiCodes(line))
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -92,7 +88,7 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 			if len(parts) == 2 {
 				key := strings.TrimSpace(parts[0])
 				value := strings.TrimSpace(parts[1])
-
+				
 				// Remove quotes from value if present
 				if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
 					value = value[1 : len(value)-1]
@@ -117,4 +113,10 @@ func WaitForPodCompletion(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 	// Return the extracted outputs
 	return outputs, nil
+}
+
+// removeANSIEscapeCodes removes ANSI escape codes from a string
+func removeANSIEscapeCodes(input string) string {
+	ansiEscapeCodes := regexp.MustCompile(`\x1B\[[0-9;]*[a-zA-Z]`)
+	return ansiEscapeCodes.ReplaceAllString(input, "")
 }
