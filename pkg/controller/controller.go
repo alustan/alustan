@@ -309,27 +309,15 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
         State:   "Progressing",
         Message: "Starting processing",
     }
-
-	 // Add finalizer if not already present
-	 finalizerName := "terraform.finalizer.alustan.io"
-	 if !util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
-		 observed.ObjectMeta.Finalizers = append(observed.ObjectMeta.Finalizers, finalizerName)
-		 _, err := c.Clientset.CoreV1().RESTClient().
-			 Put().
-			 Namespace(observed.Namespace).
-			 Resource("terraforms").
-			 Name(observed.Name).
-			 Body(observed).
-			 Do(context.TODO()).
-			 Get()
-		 if err != nil {
-			 return commonStatus, fmt.Errorf("error adding finalizer: %v", err)
-		 }
-	 }
-
-
-    
-    finalizing := false
+	// Add finalizer if not already present
+	err := Kubernetespkg.AddFinalizer(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
+	if err != nil {
+		c.logger.Errorf("Failed to add finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
+		commonStatus.State = "Error"
+		commonStatus.Message = fmt.Sprintf("Failed to add finalizer: %v", err)
+		return commonStatus, err
+	}
+	 finalizing := false
     // Check if the resource is being deleted
     if observed.ObjectMeta.DeletionTimestamp != nil {
         finalizing = true
@@ -352,7 +340,7 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
     c.logger.Infof("taggedImageName: %v", taggedImageName)
 
     // Handle ExecuteTerraform
-    execTerraformStatus := terraform.ExecuteTerraform(c.logger,c.Clientset, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
+    execTerraformStatus := terraform.ExecuteTerraform(c.logger,c.Clientset, c.dynClient, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
     commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
 
     if execTerraformStatus.State == "Error" {
