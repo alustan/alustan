@@ -57,12 +57,10 @@ func ExecuteTerraform(
 	var status v1alpha1.TerraformStatus
 
 	if finalizing {
-		status = v1alpha1.TerraformStatus{
-			State:   "Progressing",
-			Message: "Running Terraform Destroy",
-		}
 
-		status = runDestroy(logger, clientset, dynamicClient, observed, scriptContent, taggedImageName, secretName, envVars)
+		logger.Info("Attempting to destroy provisioned resources")
+		
+        status = runDestroy(logger, clientset, dynamicClient, observed, scriptContent, taggedImageName, secretName, envVars)
 
 		return status
 	}
