@@ -14,7 +14,7 @@ import (
 )
 
 // ExtractPostDeployOutput retrieves and parses the outputs from a pod's log
-func ExtractPostDeployOutput(logger *zap.SugaredLogger,clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
+func ExtractPostDeployOutput(logger *zap.SugaredLogger, clientset kubernetes.Interface, namespace, podName string) (map[string]interface{}, error) {
 	for {
 		// Retrieve the current state of the pod
 		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
@@ -67,8 +67,16 @@ func ExtractPostDeployOutput(logger *zap.SugaredLogger,clientset kubernetes.Inte
 		return nil, fmt.Errorf("outputs field not found or invalid format")
 	}
 
-	// Log the final outputs
-	logger.Infof("Final Outputs: %+v", outputs)
+	// Convert outputs to expected object format
+	postDeployOutput := make(map[string]interface{})
+	for key, value := range outputs {
+		postDeployOutput[key] = map[string]interface{}{
+			"value": value,
+		}
+	}
 
-	return outputs, nil
+	// Log the final outputs
+	logger.Infof("Final Outputs: %+v", postDeployOutput)
+
+	return postDeployOutput, nil
 }

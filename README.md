@@ -104,7 +104,8 @@ status:
     }
    
   postDeployOutput: {
-    "externalresources": [
+  "externalresources": {
+    "value": [
       {
         "Service": "EC2",
         "Resource": {
@@ -153,10 +154,10 @@ status:
           ]
         }
       }
-      
     ]
-    
+  }
 }
+
  
 
 ```
