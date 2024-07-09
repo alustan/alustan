@@ -5,13 +5,13 @@ import (
 	
 	"strings"
 	
-	"context"
      
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/client-go/dynamic"
 
 	kubernetesPkg "github.com/alustan/pkg/kubernetes"
 	"github.com/alustan/pkg/util"
@@ -44,6 +44,7 @@ func GetScriptContent(logger *zap.SugaredLogger, observed *v1alpha1.Terraform, f
 func ExecuteTerraform(
 	logger *zap.SugaredLogger, 
 	clientset kubernetes.Interface,
+	dynamicClient dynamic.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
@@ -58,7 +59,7 @@ func ExecuteTerraform(
 			Message: "Running Terraform Destroy",
 		}
 
-		status = runDestroy(logger, clientset, observed, scriptContent, taggedImageName, secretName, envVars)
+		status = runDestroy(logger, clientset,dynamicClient, observed, scriptContent, taggedImageName, secretName, envVars)
 
 	
 
@@ -189,10 +190,10 @@ func runApply(
 	return status
 }
 
-
 func runDestroy(
 	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
+	dynamicClient dynamic.Interface,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
@@ -206,41 +207,32 @@ func runDestroy(
 	}
 
 	var terraformErr error
-	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
+	retryErr := retry.OnError(retry.DefaultRetry, func(err error) bool {
 		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateOrUpdateRunPod(logger,clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
+		_, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "destroy")
 		return terraformErr
 	})
 
-	if err != nil {
+	if retryErr != nil {
 		status.State = "Failed"
 		status.Message = terraformErr.Error()
 		return status
 	}
 
 	// If successful, remove finalizer
-	
-	finalizerName := "terraform.finalizer.alustan.io"
-	if util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
-		observed.ObjectMeta.Finalizers = util.RemoveString(observed.ObjectMeta.Finalizers, finalizerName)
-		_, updateErr := clientset.CoreV1().RESTClient().
-			Put().
-			Namespace(observed.Namespace).
-			Resource("terraforms").
-			Name(observed.Name).
-			Body(observed).
-			Do(context.TODO()).
-			Get()
-		if updateErr != nil {
-			status.State = "Failed"
-			status.Message = fmt.Sprintf("error removing finalizer: %v", updateErr)
-		}
+	err := kubernetesPkg.RemoveFinalizer(logger, dynamicClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
+	if err != nil {
+		logger.Errorf("Failed to remove finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
+		status.State = "Error"
+		status.Message = fmt.Sprintf("Failed to remove finalizer: %v", err)
+		return status
 	}
 
 	return status
 }
+
 
 
 func runPostDeploy(

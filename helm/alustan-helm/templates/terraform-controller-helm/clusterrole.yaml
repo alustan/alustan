@@ -9,8 +9,11 @@ rules:
 - apiGroups: ["alustan.io"]
   resources: ["terraforms/status"]
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+- apiGroups: ["alustan.io"]
+  resources: ["terraforms/finalizers"]
+  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
 - apiGroups: [""]
-  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"] 
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"]
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
@@ -20,35 +23,10 @@ rules:
   verbs: ["get"]
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["list","get"]
+  verbs: ["list", "get"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
-  verbs: ["list","get"]
+  verbs: ["list", "get"]
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["get", "list", "watch", "create", "update", "delete"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
