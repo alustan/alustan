@@ -1,65 +1,72 @@
 package kubernetes
 
 import (
-	"context"
-	"errors"
+    "context"
+   
+    "fmt"
 
-	"go.uber.org/zap"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/util/retry"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    "k8s.io/client-go/dynamic"
+    "k8s.io/client-go/util/retry"
+    "k8s.io/apimachinery/pkg/api/errors"
+    "go.uber.org/zap"
 
-	"github.com/alustan/api/v1alpha1"
+    "github.com/alustan/api/v1alpha1"
 )
 
-// UpdateStatus updates the status subresource of a Custom Resource
-func UpdateStatus(logger *zap.SugaredLogger, dynClient dynamic.Interface, namespace, name string, status v1alpha1.TerraformStatus) error {
-	resource := schema.GroupVersionResource{
-		Group:    "alustan.io",
-		Version:  "v1alpha1",
-		Resource: "terraforms",
-	}
+func UpdateStatus(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, name, namespace string, status v1alpha1.TerraformStatus) error {
+    gvr := schema.GroupVersionResource{
+        Group:    "alustan.io",
+        Version:  "v1alpha1",
+        Resource: "terraforms",
+    }
 
-	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Fetch the existing resource
-		unstructuredResource, err := dynClient.Resource(resource).Namespace(namespace).Get(context.Background(), name, metav1.GetOptions{})
-		if err != nil {
-			logger.Errorf("Failed to get resource %s in namespace %s: %v", name, namespace, err)
-			return err
-		}
+    retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+        // Get the existing resource
+        unstructuredTerraform, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.Background(), name, metav1.GetOptions{})
+        if err != nil {
+            if errors.IsNotFound(err) {
+                logger.Infof("Resource %s in namespace %s does not exist, assuming it has been deleted", name, namespace)
+                return nil
+            }
+            return err
+        }
 
-		logger.Infof("Fetched resource: %v", unstructuredResource)
+        // Convert unstructured data to Terraform
+        terraform := &v1alpha1.Terraform{}
+        err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredTerraform.Object, terraform)
+        if err != nil {
+            return fmt.Errorf("failed to convert unstructured data to Terraform: %v", err)
+        }
 
-		// Inspect the resource content
-		if statusField, found := unstructuredResource.Object["status"]; !found {
-			logger.Errorf("Status subresource not found for resource %s in namespace %s", name, namespace)
-			logger.Debugf("Resource content: %+v", unstructuredResource.Object)
-			return errors.New("status subresource not defined")
-		} else {
-			logger.Infof("Found status field: %v", statusField)
-		}
+        // Update the status
+        terraform.Status = status
 
-		logger.Infof("Status subresource found for resource %s in namespace %s", name, namespace)
+        // Convert back to unstructured data
+        updatedUnstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(terraform)
+        if err != nil {
+            return fmt.Errorf("failed to convert Terraform to unstructured data: %v", err)
+        }
+        updatedUnstructured := &unstructured.Unstructured{Object: updatedUnstructuredMap}
 
-		// Update the status
-		unstructuredResource.Object["status"] = status
+        // Update the status of the resource
+        _, err = dynamicClient.Resource(gvr).Namespace(namespace).UpdateStatus(context.Background(), updatedUnstructured, metav1.UpdateOptions{})
+        if err != nil {
+            return err
+        }
 
-		// Update the resource with the new status
-		_, err = dynClient.Resource(resource).Namespace(namespace).UpdateStatus(context.Background(), unstructuredResource, metav1.UpdateOptions{})
-		if err != nil {
-			logger.Errorf("Failed to update status for resource %s in namespace %s: %v", name, namespace, err)
-			return err
-		}
+        return nil
+    })
 
-		logger.Infof("Successfully updated status for resource %s in namespace %s", name, namespace)
-		return nil
-	})
+    if retryErr != nil {
+        logger.Errorf("Failed to update status for resource %s in namespace %s after retrying: %v", name, namespace, retryErr)
+        return retryErr
+    }
 
-	if retryErr != nil {
-		logger.Errorf("Failed to update status for resource %s in namespace %s after retrying: %v", name, namespace, retryErr)
-		return retryErr
-	}
-
-	return nil
+    // Log the updated status or perform additional actions
+    logger.Infof("Updated status for %s in namespace %s", name, namespace)
+    return nil
 }

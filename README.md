@@ -1,20 +1,20 @@
-## Introduction
+# *Alustan*
 
 > **Infrastructure continuous delivery platform**
 
 ## Design Goal
 
-- Simple workload specifications
+- `Simple` workload specifications
 
-- Intentionally unopionated, left the level of infra backend abstraction to infra team
+- Intentionally `unopionated`, left the level of infra backend abstraction to infra team
 
-- Free to design what constitutes your deploy script instead of simply terraform plan and apply
+- Free to design what constitutes your `deploy script` instead of simply terraform plan and apply
 
-- Ability to write postDeploy script that can perform any requested action and store the output in custom resource status field
+- Ability to write `postDeploy script` that can perform any requested action and store the output in custom resource status field
 
-- Intentionally outsourced the packaging of the IAC OCI image to accomodate for different cloud services. [base image sample](./examples/Dockerfile) 
+- Intentionally outsourced the packaging of the `IAC OCI image `to accomodate for different cloud services. [base image sample](./examples/Dockerfile) 
 
--  Scans your container registry every 6hrs and uses the latest image that satisfies the specified semantic tag constraint.
+-  Scans your container registry every `6hrs` and uses the latest image that satisfies the specified `semantic tag constraint`.
 
 > The default `sync interval` can be changed in the helm values file
 
@@ -80,14 +80,13 @@ spec:
 status:
   state: "Progressing"
   message: "Starting processing"
-  output: |
-    {
+  output: {
       "aws_certificate_arn": "aws_certificate_arn",
       "service_account_role_arn": "service_account_role_arn",
       "db_instance_address": "db_instance_address"
     }
-  ingressURLs: |
-    {
+    
+  ingressURLs: {
       "production": [
         "https://example-production.com"
       ],
@@ -96,122 +95,18 @@ status:
         "https://another-example-development.com"
       ]
     }
-  credentials: |
-    {
+    
+  credentials:  {
       "argocdUsername": "admin",
       "argocdPassword": "exampleArgoCDPassword",
       "grafanaUsername": "admin",
       "grafanaPassword": "exampleGrafanaPassword"
     }
-  postDeployOutput: |
-    {
-      "outputs": {
-        "EC2": [
-          {
-            "InstanceID": "i-1234567890abcdef0",
-            "InstanceType": "t2.micro",
-            "State": "running",
-            "Tags": [
-              {
-                "Key": "Name",
-                "Value": "MyInstance"
-              }
-            ]
-          },
-          {
-            "InstanceID": "i-0987654321abcdef0",
-            "InstanceType": "t3.medium",
-            "State": "stopped",
-            "Tags": [
-              {
-                "Key": "Name",
-                "Value": "YourInstance"
-              }
-            ]
-          }
-        ],
-        "RDS": [
-          {
-            "DBInstanceIdentifier": "my-db-instance",
-            "DBInstanceClass": "db.t3.medium",
-            "DBInstanceStatus": "available",
-            "Tags": [
-              {
-                "Key": "Environment",
-                "Value": "Production"
-              }
-            ]
-          }
-        ],
-        "LoadBalancer": [
-          {
-            "LoadBalancerName": "example-alb",
-            "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
-            "Type": "application",
-            "Scheme": "internet-facing",
-            "State": "active",
-            "Tags": [
-              {
-                "Key": "Environment",
-                "Value": "Development"
-              }
-            ]
-          }
-        ]
-      }
-    }
-
-```
-
-- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
-
-```yaml
-variables:
-  TF_VAR_provision_cluster: "true"
-  TF_VAR_provision_db: "false"
-  TF_VAR_vpc_cidr: "10.1.0.0/16"
-
-```
-
-- This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
-
-> The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
-
-**Sample [deploy](https://github.com/alustan/infrastructure) and [destroy](https://github.com/alustan/infrastructure) script in GO**
-
-
-```yaml
-scripts:
-  deploy: deploy
-  destroy: destroy -c
-
-```
-- `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
-
-> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
-
-> The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
-
-```yaml
-postDeploy:
-  script: aws-resource
-  args:
-    workspace: TF_VAR_workspace
-    region: TF_VAR_region
-
-``` 
-
-> **The output of your `postDeploy` script should match `(map[string]interface{}` with `outputs` key at top level**
-
-> **key: is a `string` body: `any arbitrary data structure`**
-
-> **Output in status field looks like this:** 
-
-```yaml
-postDeployOutput: |
-  {
-    "outputs": {
-      "EC2": [
+   
+  postDeployOutput: {
+   "outputs": {
+     "cloudresources": {
+     "EC2": [
         {
           "InstanceID": "i-1234567890abcdef0",
           "InstanceType": "t2.micro",
@@ -264,7 +159,117 @@ postDeployOutput: |
         }
       ]
     }
-  }
+
+   }
+}
+
+```
+
+- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
+
+```yaml
+variables:
+  TF_VAR_provision_cluster: "true"
+  TF_VAR_provision_db: "false"
+  TF_VAR_vpc_cidr: "10.1.0.0/16"
+
+```
+
+- This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
+
+> The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
+
+**Sample [deploy](https://github.com/alustan/infrastructure) and [destroy](https://github.com/alustan/infrastructure) script in GO**
+
+
+```yaml
+scripts:
+  deploy: deploy
+  destroy: destroy -c
+
+```
+- `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
+
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
+
+> The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
+
+```yaml
+postDeploy:
+  script: aws-resource
+  args:
+    workspace: TF_VAR_workspace
+    region: TF_VAR_region
+
+``` 
+
+> **The output of your `postDeploy` script should match `(map[string]interface{}` with `outputs` key at top level**
+
+> **key: is a `string` body: `any arbitrary data structure`**
+
+
+```yaml
+{
+   "outputs": {
+     "cloudresources": {
+     "EC2": [
+        {
+          "InstanceID": "i-1234567890abcdef0",
+          "InstanceType": "t2.micro",
+          "State": "running",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "MyInstance"
+            }
+          ]
+        },
+        {
+          "InstanceID": "i-0987654321abcdef0",
+          "InstanceType": "t3.medium",
+          "State": "stopped",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "YourInstance"
+            }
+          ]
+        }
+      ],
+      "RDS": [
+        {
+          "DBInstanceIdentifier": "my-db-instance",
+          "DBInstanceClass": "db.t3.medium",
+          "DBInstanceStatus": "available",
+          "Tags": [
+            {
+              "Key": "Environment",
+              "Value": "Production"
+            }
+          ]
+        }
+      ],
+      "LoadBalancer": [
+        {
+          "LoadBalancerName": "example-alb",
+          "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
+          "Type": "application",
+          "Scheme": "internet-facing",
+          "State": "active",
+          "Tags": [
+            {
+              "Key": "Environment",
+              "Value": "Development"
+            }
+          ]
+        }
+      ]
+    }
+
+   }
+
+}
+    
 
 ```
 

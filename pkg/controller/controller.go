@@ -230,9 +230,10 @@ func (c *Controller) processNextWorkItem() bool {
 		}
 
 		// Get the actual resource using the lister
-		terraformObj, err := c.terraformLister.Terraform(namespace).Get(name)
+		terraformObject, err := c.terraformLister.Terraform(namespace).Get(name)
 		if err != nil {
 			if errors.IsNotFound(err) {
+				// Resource no longer exists, forget the key
 				c.workqueue.Forget(obj)
 				return nil
 			}
@@ -241,6 +242,8 @@ func (c *Controller) processNextWorkItem() bool {
 			c.logger.Errorf("error fetching resource %s: %v", key, err)
 			return fmt.Errorf("error fetching resource %s: %v", key, err)
 		}
+
+		terraformObj := terraformObject.DeepCopyObject()
 
 		// Convert to *v1alpha1.Terraform
 		unstructuredObj, ok := terraformObj.(*unstructured.Unstructured)
@@ -276,7 +279,7 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 
 			finalStatus.ObservedGeneration = gen
-			updateErr := c.updateStatus(terraform, finalStatus)
+			updateErr := c.updateStatus(terraform,finalStatus)
 			if updateErr != nil {
 				c.logger.Infof("Failed to update status for %s: %v", key, updateErr)
 				c.workqueue.AddRateLimited(key)
@@ -297,36 +300,39 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.TerraformStatus, error) {
-    envVars := util.ExtractEnvVars(observed.Spec.Variables)
+     
+   envVars := util.ExtractEnvVars(observed.Spec.Variables)
     secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
     c.logger.Infof("Observed Parent Spec: %+v", observed.Spec)
 
-    commonStatus := v1alpha1.TerraformStatus{
+	commonStatus := v1alpha1.TerraformStatus{
         State:   "Progressing",
         Message: "Starting processing",
     }
 
+	 // Add finalizer if not already present
+	 finalizerName := "terraform.finalizer.alustan.io"
+	 if !util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
+		 observed.ObjectMeta.Finalizers = append(observed.ObjectMeta.Finalizers, finalizerName)
+		 _, err := c.Clientset.CoreV1().RESTClient().
+			 Put().
+			 Namespace(observed.Namespace).
+			 Resource("terraforms").
+			 Name(observed.Name).
+			 Body(observed).
+			 Do(context.TODO()).
+			 Get()
+		 if err != nil {
+			 return commonStatus, fmt.Errorf("error adding finalizer: %v", err)
+		 }
+	 }
+
+
+    
     finalizing := false
     // Check if the resource is being deleted
     if observed.ObjectMeta.DeletionTimestamp != nil {
         finalizing = true
-
-        // Add finalizer if not already present
-        finalizerName := "terraform.finalizer.alustan.io"
-        if !util.ContainsString(observed.ObjectMeta.Finalizers, finalizerName) {
-            observed.ObjectMeta.Finalizers = append(observed.ObjectMeta.Finalizers, finalizerName)
-            _, err := c.Clientset.CoreV1().RESTClient().
-                Put().
-                Namespace(observed.Namespace).
-                Resource("terraforms").
-                Name(observed.Name).
-                Body(observed).
-                Do(context.TODO()).
-                Get()
-            if err != nil {
-                return commonStatus, fmt.Errorf("error adding finalizer: %v", err)
-            }
-        }
     }
 
     // Handle script content
@@ -381,12 +387,14 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.TerraformStatus) v1alpha1.Terr
 
 
 func (c *Controller) updateStatus(observed *v1alpha1.Terraform, status v1alpha1.TerraformStatus) error {
-	err := Kubernetespkg.UpdateStatus(c.logger, c.dynClient, observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, status)
+	err := Kubernetespkg.UpdateStatus(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, status)
+	
 	if err != nil {
 		c.logger.Errorf("Failed to update status for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
 		return err
 	}
 	return nil
+
 }
 
 
