@@ -191,7 +191,7 @@ variables:
 
 > The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
-**Sample [deploy](https://github.com/alustan/infrastructure) and [destroy](https://github.com/alustan/infrastructure) script in GO**
+**Sample [deploy](https://github.com/alustan/infrastructure/blob/main/setup/pkg/deploy) and [destroy](https://github.com/alustan/infrastructure/blob/main/setup/pkg/destroy) script in GO**
 
 
 ```yaml
@@ -202,7 +202,7 @@ scripts:
 ```
 - `postDeploy` is an additional flexibility tool given to Infra Engineers to write a custom script that will be run by the controller and `output` stored in status field.
 
-> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure/blob/main/postdeploy) (could be any scripting language) that reaches out to aws api and retrieves metadata and status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
 
 > The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
 
