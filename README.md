@@ -191,7 +191,7 @@ variables:
 
 > The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
-**Sample [deploy](https://github.com/alustan/infrastructure/blob/main/setup/pkg/deploy) and [destroy](https://github.com/alustan/infrastructure/blob/main/setup/pkg/destroy) script in GO**
+**Sample [deploy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/deploy) and [destroy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/destroy) script in GO**
 
 
 ```yaml
