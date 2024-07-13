@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"  
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -305,12 +306,17 @@ func (c *Controller) processNextWorkItem() bool {
 		// Get the actual resource using the lister
 		terraformObject, err := c.terraformLister.Terraform(namespace).Get(name)
 		if err != nil {
-			if errors.IsNotFound(err) {
-				// Resource no longer exists, forget the key and log as info
-				c.workqueue.Forget(obj)
-				c.logger.Infof("resource %s/%s no longer exists", namespace, name)
-				return nil
+
+			if statusErr, ok := err.(*errors.StatusError); ok {
+
+				if statusErr.ErrStatus.Reason == metav1.StatusReasonNotFound {
+					// Resource no longer exists, forget the key and log as info
+					c.workqueue.Forget(obj)
+					c.logger.Infof("resource %s/%s no longer exists", namespace, name)
+					return nil
+				}
 			}
+
 			// For other errors, decide whether to requeue or not
 			if errors.IsInternalError(err) || errors.IsServerTimeout(err) {
 				// These are considered transient errors, requeue the item
