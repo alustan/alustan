@@ -10,9 +10,9 @@ To get started with the project on your machine, you need to install the followi
 3. Docker. 
 4. Kubernets cluster (local/remote)
 
-Once required tools are installed, clone this repository. `git clone https://github.com/alustan/alustan.git`.
+Once required tools are installed, clone or fork this repository. `git clone https://github.com/alustan/alustan.git`.
 
-Setup your github workflow secrets
+`Setup your github workflow secrets`: will be required to push your controller image and helm chart to your OCI registry
 
 `make help`: for relevant make commands
 
@@ -47,7 +47,7 @@ spec:
   containerRegistry:
     provider: docker
     imageName: alustan/example #build your own image, from this repo alustan/basic-example since the 
-                               # controller will require access to your registry to get tags that match semantic constraint 
+                               # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
     semanticVersion: ">=0.2.0"
 
 ```
