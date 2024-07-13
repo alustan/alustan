@@ -46,7 +46,8 @@ spec:
       region: TF_VAR_region
   containerRegistry:
     provider: docker
-    imageName: alustan/example
+    imageName: alustan/example #build your own image, from this repo alustan/basic-example since the 
+                               # controller will require access to your registry to get tags that match semantic constraint 
     semanticVersion: ">=0.2.0"
 
 ```
