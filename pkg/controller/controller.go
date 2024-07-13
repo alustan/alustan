@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 	"fmt"
-	
+	pkgerrors "errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"  
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -305,29 +305,28 @@ func (c *Controller) processNextWorkItem() bool {
 
 		// Get the actual resource using the lister
 		terraformObject, err := c.terraformLister.Terraform(namespace).Get(name)
+		 
 		if err != nil {
 
-			if statusErr, ok := err.(*errors.StatusError); ok {
+			unwrappedErr := pkgerrors.Unwrap(err)
 
-				if statusErr.ErrStatus.Reason == metav1.StatusReasonNotFound {
-					// Resource no longer exists, forget the key and log as info
-					c.workqueue.Forget(obj)
-					c.logger.Infof("resource %s/%s no longer exists", namespace, name)
-					return nil
-				}
+			if errors.IsNotFound(unwrappedErr) {
+				c.workqueue.Forget(obj)
+				c.logger.Infof("resource %s/%s no longer exists", namespace, name)
+				return nil
 			}
 
 			// For other errors, decide whether to requeue or not
-			if errors.IsInternalError(err) || errors.IsServerTimeout(err) {
+			if errors.IsInternalError(unwrappedErr) || errors.IsServerTimeout(unwrappedErr) {
 				// These are considered transient errors, requeue the item
 				c.workqueue.AddRateLimited(key)
-				c.logger.Errorf("transient error fetching resource %s: %v", key, err)
-				return fmt.Errorf("transient error fetching resource %s: %v", key, err)
+				c.logger.Errorf("transient error fetching resource %s: %v", key, unwrappedErr)
+				return fmt.Errorf("transient error fetching resource %s: %v", key, unwrappedErr)
 			} else {
 				// Non-transient errors, do not requeue the item
 				c.workqueue.Forget(obj)
-				c.logger.Errorf("non-transient error fetching resource %s: %v", key, err)
-				return fmt.Errorf("non-transient error fetching resource %s: %v", key, err)
+				c.logger.Errorf("non-transient error fetching resource %s: %v", key, unwrappedErr)
+				return fmt.Errorf("non-transient error fetching resource %s: %v", key, unwrappedErr)
 			}
 		}
 
