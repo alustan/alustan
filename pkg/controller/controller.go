@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 	"fmt"
-	pkgerrors "errors"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -305,33 +305,25 @@ func (c *Controller) processNextWorkItem() bool {
 
 		// Get the actual resource using the lister
 		terraformObject, err := c.terraformLister.Terraform(namespace).Get(name)
-		 
 		if err != nil {
-
-			// Log detailed information about the error
-			c.logger.Errorf("Error type: %T, Error: %v", err, err)
-			fmt.Printf("Error type: %T, Error: %v\n", err, err)
-		
-
-			unwrappedErr := pkgerrors.Unwrap(err)
-
-			if errors.IsNotFound(unwrappedErr) {
+		    // Check if the error message contains "not found"
+			if strings.Contains(err.Error(), "not found") {
 				c.workqueue.Forget(obj)
 				c.logger.Infof("resource %s/%s no longer exists", namespace, name)
 				return nil
 			}
 
 			// For other errors, decide whether to requeue or not
-			if errors.IsInternalError(unwrappedErr) || errors.IsServerTimeout(unwrappedErr) {
+			if errors.IsInternalError(err) || errors.IsServerTimeout(err) {
 				// These are considered transient errors, requeue the item
 				c.workqueue.AddRateLimited(key)
-				c.logger.Errorf("transient error fetching resource %s: %v", key, unwrappedErr)
-				return fmt.Errorf("transient error fetching resource %s: %v", key, unwrappedErr)
+				c.logger.Errorf("transient error fetching resource. requeing!! %s: %v", key, err)
+				return fmt.Errorf("transient error fetching resource. requeing!! %s: %v", key, err)
 			} else {
 				// Non-transient errors, do not requeue the item
 				c.workqueue.Forget(obj)
-				c.logger.Errorf("non-transient error fetching resource %s: %v", key, unwrappedErr)
-				return fmt.Errorf("non-transient error fetching resource %s: %v", key, unwrappedErr)
+				c.logger.Errorf("non-transient error fetching resource %s: %v", key, err)
+				return fmt.Errorf("non-transient error fetching resource %s: %v", key, err)
 			}
 		}
 
