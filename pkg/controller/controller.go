@@ -308,6 +308,11 @@ func (c *Controller) processNextWorkItem() bool {
 		 
 		if err != nil {
 
+			// Log detailed information about the error
+			c.logger.Errorf("Error type: %T, Error: %v", err, err)
+			fmt.Printf("Error type: %T, Error: %v\n", err, err)
+		
+
 			unwrappedErr := pkgerrors.Unwrap(err)
 
 			if errors.IsNotFound(unwrappedErr) {
