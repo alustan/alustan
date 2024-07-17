@@ -40,9 +40,6 @@ type ContainerRegistry struct {
 type TerraformStatus struct {
 	State            string                           `json:"state"`
 	Message          string                           `json:"message"`
-	Output           map[string]runtime.RawExtension  `json:"output,omitempty"`
-	IngressURLs      map[string]runtime.RawExtension  `json:"ingressURLs,omitempty"`
-	Credentials      map[string]runtime.RawExtension  `json:"credentials,omitempty"`
 	PostDeployOutput map[string]runtime.RawExtension  `json:"postDeployOutput,omitempty"`
 	ObservedGeneration int                         `json:"observedGeneration,omitempty"`
 }

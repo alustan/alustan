@@ -16,10 +16,7 @@ func (in *Terraform) DeepCopyInto(out *Terraform) {
 	out.Status = TerraformStatus{
 		State:             in.Status.State,
 		Message:           in.Status.Message,
-		Output:            in.Status.Output,
-		IngressURLs:       in.Status.IngressURLs,
-		Credentials:       in.Status.Credentials,
-		PostDeployOutput:   in.Status.PostDeployOutput,
+	    PostDeployOutput:   in.Status.PostDeployOutput,
 		ObservedGeneration: in.Status.ObservedGeneration,
 		
 	}

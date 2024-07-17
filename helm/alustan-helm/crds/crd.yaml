@@ -90,25 +90,12 @@ spec:
           status:
             description: TerraformStatus defines the observed state of Terraform
             properties:
-              credentials:
-                additionalProperties:
-                  type: object
-                  x-kubernetes-preserve-unknown-fields: true
-                type: object
-              ingressURLs:
-                additionalProperties:
-                  type: object
-                  x-kubernetes-preserve-unknown-fields: true
-                type: object
+             
               message:
                 type: string
               observedGeneration:
                 type: integer
-              output:
-                additionalProperties:
-                  type: object
-                  x-kubernetes-preserve-unknown-fields: true
-                type: object
+              
               postDeployOutput:
                 additionalProperties:
                   type: object

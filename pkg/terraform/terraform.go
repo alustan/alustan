@@ -76,9 +76,6 @@ func ExecuteTerraform(
 	finalStatus := v1alpha1.TerraformStatus{
 		State:       status.State,
 		Message:     status.Message,
-		Output:      status.Output,
-		IngressURLs: status.IngressURLs,
-		Credentials: status.Credentials,
 	}
 
 	if status.State == "Failed" {
@@ -114,13 +111,13 @@ func runApply(
 ) v1alpha1.TerraformStatus {
 	var status v1alpha1.TerraformStatus
 	var terraformErr error
-	var podName string
+	
 
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
 		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		podName, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		_, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -133,62 +130,7 @@ func runApply(
 		return status
 	}
 
-	outputs, err := containers.WaitForPodCompletion(logger, clientset, observed.ObjectMeta.Namespace, podName)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", err)
-		return status
-	}
-
-	// Validate outputs can be marshaled to JSON
-	_, err = json.Marshal(outputs)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error marshaling outputs to JSON: %v", err)
-		return status
-	}
-
-	convertedOutputs, err := convertToRawExtensionMap(outputs)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error converting outputs: %v", err)
-		return status
-	}
-	status.Output = convertedOutputs
-
-	// Fetch and validate Ingress URLs
-	ingressURLs, err := kubernetesPkg.GetAllIngressURLs(clientset)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error retrieving Ingress URLs: %v", err)
-		return status
-	}
-
-	convertedIngressURLs, err := convertToRawExtensionMap(ingressURLs)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error converting ingress URLs: %v", err)
-		return status
-	}
-	status.IngressURLs = convertedIngressURLs
-
-	// Fetch and validate Credentials
-	credentials, err := kubernetesPkg.FetchCredentials(clientset)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error retrieving credentials: %v", err)
-		return status
-	}
-
-	convertedCredentials, err := convertToRawExtensionMap(credentials)
-	if err != nil {
-		status.State = "Failed"
-		status.Message = fmt.Sprintf("Error converting credentials: %v", err)
-		return status
-	}
-	status.Credentials = convertedCredentials
-
-	return status
+  return status
 }
 
 func runDestroy(
