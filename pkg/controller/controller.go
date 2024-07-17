@@ -445,18 +445,11 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.TerraformStatus) v1alpha1.Terr
     if newStatus.Message != "" {
         baseStatus.Message = newStatus.Message
     }
-    if newStatus.Output != nil {
-        baseStatus.Output = newStatus.Output
-    }
+   
     if newStatus.PostDeployOutput != nil {
         baseStatus.PostDeployOutput = newStatus.PostDeployOutput
     }
-    if newStatus.IngressURLs != nil {
-        baseStatus.IngressURLs = newStatus.IngressURLs
-    }
-    if newStatus.Credentials != nil {
-        baseStatus.Credentials = newStatus.Credentials
-    }
+   
    
     return baseStatus
 }

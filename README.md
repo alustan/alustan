@@ -81,46 +81,9 @@ status:
   state: "Progressing"
   message: "Starting processing"
   observedGeneration: 1
-  output: {
-      "aws_certificate_arn": {
-        "value": "aws_certificate_arn",
-      } 
-      "service_account_role_arn": {
-        "value": "service_account_role_arn",
-      } 
-      "db_instance_address": {
-        "value": "db_instance_address"
-      } 
-    }
-    
-  ingressURLs: {
-      "production": [
-        "https://example-production.com"
-      ],
-      "development": [
-        "https://example-development.com",
-        "https://another-example-development.com"
-      ]
-    }
-    
-  credentials:  {
-      "argocdPassword": {
-        "value": ""
-      },
-      "argocdUsername": {
-        "value": "admin"
-      },
-      "grafanaPassword": {
-        "value": ""
-      },
-      "grafanaUsername": {
-        "value": "admin"
-      }
-     }
-   
   postDeployOutput: {
-  "externalresources": {
-    "value": [
+   "externalresources": {
+     "value": [
       {
         "Service": "EC2",
         "Resource": {
@@ -157,7 +120,6 @@ status:
         "Service": "LoadBalancer",
         "Resource": {
           "LoadBalancerName": "example-alb",
-          "DNSName": "example-alb-123456789.us-west-2.elb.amazonaws.com",
           "Type": "application",
           "Scheme": "internet-facing",
           "State": "active",
@@ -250,18 +212,12 @@ postDeploy:
 
 > **`message`: Detailed message regarding current state**
 
-> **`output`: Terraform Output**
-
-> **`ingressURLs`: Lists all urls associated with all of the ingress resource in the cluster**
-
-> **`credentials`: Retrieves `username` and `passwords` associated with some cluster addons; In this case it just attempts to retrieve `argocd` and `grafana` login creds if found in the cluster**
-
 > **`postDeployOutput`: Custom field to store output of your `postdeploy` script if specified**
 
 **Check Out:**
 
  https://github.com/alustan/infrastructure for infrastructure backend reference implementation
 
-**Alustan:** focuses on building tools and platforms that ensures right implementation of devops principles
+
 
 
