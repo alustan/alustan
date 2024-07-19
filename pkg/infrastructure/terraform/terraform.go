@@ -83,7 +83,8 @@ func ExecuteTerraform(
 		return finalStatus
 	}
 
-	if observed.Spec.PostDeploy.Script != "" {
+	
+   if observed.Spec.PostDeploy.Script != "" {
 		finalStatus.State = "Progressing"
 		finalStatus.Message = "Running postDeploy script"
 
@@ -112,13 +113,14 @@ func runApply(
 ) v1alpha1.TerraformStatus {
 	var status v1alpha1.TerraformStatus
 	var terraformErr error
+	var podName string
 	
 
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
 		logger.Infof("Error occurred: %v", err)
 		return strings.Contains(err.Error(), "timeout")
 	}, func() error {
-		_, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
+		podName, terraformErr = containers.CreateOrUpdateRunPod(logger, clientset, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, scriptContent, envVars, taggedImageName, secretName, "deploy")
 		return terraformErr
 	})
 
@@ -128,6 +130,13 @@ func runApply(
 	if err != nil {
 		status.State = "Failed"
 		status.Message = terraformErr.Error()
+		return status
+	}
+
+	 containerErr := containers.WaitForPodCompletion(logger, clientset, observed.ObjectMeta.Namespace, podName)
+	if containerErr != nil {
+		status.State = "Failed"
+		status.Message = fmt.Sprintf("Error retrieving Terraform output: %v", containerErr)
 		return status
 	}
 
