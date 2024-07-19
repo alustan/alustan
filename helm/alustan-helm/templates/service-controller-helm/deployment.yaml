@@ -47,10 +47,11 @@ spec:
            
             {{- else }}
            
+           
             - name: CONTAINER_REGISTRY_SECRET
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
-
-             - name: GITHUB_TOKEN
+             
+            - name: GITHUB_TOKEN
               value: {{ .Values.githubToken}}
          
            
