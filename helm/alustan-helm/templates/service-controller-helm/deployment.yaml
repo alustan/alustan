@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-controller-helm
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "service-controller-helm.labels" . | nindent 4 }}
+spec:
+ 
+  replicas: {{ .Values.service.replicaCount }}
+ 
+  selector:
+    matchLabels:
+      {{- include "service-controller-helm.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+     
+      labels:
+        {{- include "service-controller-helm.labels" . | nindent 8 }}
+       
+    spec:
+     
+      {{- if .Values.serviceAccount.create -}}
+      serviceAccountName: {{ include "service-controller-helm.serviceAccountName" . }}
+      {{- end }}
+      
+      containers:
+        - name: {{ .Chart.Name }}
+          
+          image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag }}"
+          env:
+            - name: SERVICE_SYNC_INTERVAL
+              value: {{ .Values.service.syncInterval }}
+           
+          {{- if .Values.useSecrets }}
+            - name: CONTAINER_REGISTRY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.containerRegistrySecretName }}
+                  key: {{ .Values.containerRegistrySecretKey }}
+
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.githubTokenSecretName }}
+                  key: {{ .Values.githubTokenSecretKey }}
+           
+            {{- else }}
+           
+            - name: CONTAINER_REGISTRY_SECRET
+              value: {{ .Values.containerRegistry.containerRegistrySecret }}
+
+             - name: GITHUB_TOKEN
+              value: {{ .Values.githubToken}}
+         
+           
+            {{- end }}
+          imagePullPolicy: {{ .Values.service.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.service.port }}
+              protocol: TCP
+          
+         

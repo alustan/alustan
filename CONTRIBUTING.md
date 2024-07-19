@@ -23,6 +23,8 @@ To quickly test functionality locally
 
 Use this manifest that references a basic setup
 
+**Terraform controller**
+
 ```yaml
 
 apiVersion: alustan.io/v1alpha1
@@ -31,7 +33,7 @@ metadata:
   name: dummy-example
 spec:
   variables:
-    TF_VAR_workspace: "dev"
+    TF_VAR_workspace: "default"
     TF_VAR_region: "us-east-1"
     TF_VAR_provision_cluster: "true"
     TF_VAR_provision_db: "false"
@@ -46,9 +48,38 @@ spec:
       region: TF_VAR_region
   containerRegistry:
     provider: docker
-    imageName: alustan/example #build your own image, from this repo alustan/basic-example since the 
+    imageName: alustan/example #build your own image from this repo alustan/basic-example since the 
                                # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
     semanticVersion: ">=0.2.0"
+
+```
+
+**Service controller**
+
+```yaml
+apiVersion: alustan.io/v1alpha1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  workspace: default
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: basic-demo
+    releaseName: basic-demo
+    targetRevision: main
+    values:
+      cluster: ${workspace.CLUSTER_NAME}
+      service: frontend
+      image: alustan/basic-web:0.2.0
+      config:
+        DUMMY_1: ${workspace.dummy_output_1}
+        DUMMY_2: ${workspace.dummy_output_2}
+
+  containerRegistry:
+    provider: docker
+    imageName: alustan/basic-web
+    semanticVersion: ">=0.1.0"
 
 ```
 

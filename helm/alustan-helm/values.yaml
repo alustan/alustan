@@ -1,35 +1,19 @@
 
 
-replicaCount: 1
 namespace: alustan
-image:
-  pullPolicy: IfNotPresent
-  infra:
-    repository: alustan/terraform-controller
-    
-    # Overrides the image tag whose default is the chart appVersion.
-    tag: ""
- 
-
-
-imagePullSecrets: []
-
-
-syncInterval: ""
-
-
-
 
 containerRegistry:
-  containerRegistrySecret: ""  
+  containerRegistrySecret: "" # required to pull image and tag from OCI registry.
 
+# base64-encoded GitHub PAT
+githubToken: "" # required if previewEnvirinment is enabled for `private repository`. 
 
-# wish to Use Kubernetes Secrets to store "containerRegistrySecret" "
+# wish to Use Kubernetes Secrets to store "containerRegistrySecret or githubToken" "
 useSecrets: false
 containerRegistrySecretName: ""
 containerRegistrySecretKey: ""
-
-
+githubTokenSecretName: ""
+githubTokenSecretKey: ""
 
 serviceAccount:
    # Specifies whether a service account should be created
@@ -43,21 +27,35 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: "default" # change to name of service account with necessary arn annotations
 
-podAnnotations: {}
-podLabels: {}
+# Infrastructure specific values file
+infrastructure:
 
+  replicaCount: 1
 
-service:
-  type: ClusterIP
-  infra:
-    port:  8080 
+  image:
+    pullPolicy: IfNotPresent
+    repository: alustan/terraform-controller
+      # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
  
+  syncInterval: ""
 
+  service:
+    type: ClusterIP
+    port:  8080 
 
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
+# Service specific values file
+service:
+  replicaCount: 1
 
+  image:
+    pullPolicy: IfNotPresent
+    repository: alustan/service-controller
+      # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+ 
+  syncInterval: ""
+
+  service:
+    type: ClusterIP
+    port:  8081 

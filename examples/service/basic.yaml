@@ -1,0 +1,30 @@
+# #####################################
+
+# check out https://github.com/alustan/cluster-manifests/blob/main/basic-demo for dummy implementation of application helm chart
+
+# #####################################
+
+---
+apiVersion: alustan.io/v1alpha1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  workspace: default
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: basic-demo
+    releaseName: basic-demo
+    targetRevision: main
+    values:
+      cluster: ${workspace.CLUSTER_NAME}
+      service: frontend
+      image: alustan/basic-web:0.2.0
+      config:
+        DUMMY_1: ${workspace.dummy_output_1}
+        DUMMY_2: ${workspace.dummy_output_2}
+
+  containerRegistry:
+    provider: docker
+    imageName: alustan/basic-web
+    semanticVersion: ">=0.1.0"

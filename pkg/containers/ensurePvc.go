@@ -29,7 +29,7 @@ func EnsurePVC(logger *zap.SugaredLogger,clientset  kubernetes.Interface, namesp
             AccessModes: []v1.PersistentVolumeAccessMode{
                 v1.ReadWriteOnce,
             },
-            Resources: v1.VolumeResourceRequirements{
+            Resources: v1.ResourceRequirements{
                 Requests: v1.ResourceList{
                     v1.ResourceStorage: resource.MustParse("5Gi"),
                 },
