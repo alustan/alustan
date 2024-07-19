@@ -106,7 +106,7 @@ spec:
 ```
 - `status field` The Status field consists of the followings:
 
-> **`state`: Current state - `Progressing` `Error` `Success` `Completed`**
+> **`state`: Current state - `Progressing` `Error` `Failed` `Blocked` `Completed`**
 
 > **`message`: Detailed message regarding current state**
 
@@ -202,7 +202,7 @@ spec:
 
 - `status field` The Status field consists of the followings:
 
-> **`state`: Current state - `Progressing` `Error` `Failed` `Blocked` `Completed`**
+> **`state`: Current state - `Progressing` `Error` `Success` `Failed` `Completed`**
 
 > **`message`: Detailed message regarding current state**
 
