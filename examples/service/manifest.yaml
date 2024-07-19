@@ -1,0 +1,66 @@
+# #####################################
+
+# check out https://github.com/alustan/cluster-manifests/blob/main/application-helm for reference implementation of application helm chart
+
+# #####################################
+
+---
+apiVersion: alustan.io/v1alpha1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  workspace: staging
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: application-helm
+    releaseName: backend-application
+    targetRevision: main
+    values:
+      cluster: ${workspace.CLUSTER_NAME}
+      service: backend
+      image: alustan/backend:0.2.0
+      config:
+        DB_URL: postgresql://${workspace.DB_USER}:${workspace.DB_PASSWORD}@postgres:5432/${workspace.DB_NAME}
+
+  containerRegistry:
+    provider: docker
+    imageName: alustan/backend
+    semanticVersion: ">=0.2.0"
+
+---
+apiVersion: alustan.io/v1alpha1
+kind: Service
+metadata:
+  name: web-service
+spec:
+  workspace: staging
+  previewEnvironment:
+    enabled: true
+    gitOwner: alustan
+    gitRepo: web-app-demo
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: application-helm
+    releaseName: web-application
+    targetRevision: main
+    values:
+      cluster: ${workspace.CLUSTER_NAME}
+      image:
+        repository: alustan/web:1.1.0
+      service: frontend
+      ingress:
+        hosts:
+         - host: chart-example.local
+        tls: 
+        - hosts:
+            - chart-example.local
+      
+  containerRegistry:
+    provider: docker
+    imageName: alustan/web
+    semanticVersion: "~1.1.0"
+  dependencies:
+    service: 
+    - api-service
+

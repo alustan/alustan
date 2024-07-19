@@ -6,28 +6,20 @@ metadata:
   labels:
     {{- include "terraform-controller-helm.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
+ 
+  replicas: {{ .Values.service.replicaCount }}
+ 
   selector:
     matchLabels:
       {{- include "terraform-controller-helm.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+     
       labels:
         {{- include "terraform-controller-helm.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+       
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+     
       {{- if .Values.serviceAccount.create -}}
       serviceAccountName: {{ include "terraform-controller-helm.serviceAccountName" . }}
       {{- end }}
@@ -35,10 +27,10 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           
-          image: "{{ .Values.image.infra.repository }}:{{ .Values.image.infra.tag }}"
+          image: "{{ .Values.infrastructure.image.repository }}:{{ .Values.infrastructure.image.tag }}"
           env:
-            - name: SYNC_INTERVAL
-              value: {{ .Values.syncInterval }}
+            - name: INFRA_SYNC_INTERVAL
+              value: {{ .Values.infrastructure.syncInterval }}
            
           {{- if .Values.useSecrets }}
             - name: CONTAINER_REGISTRY_SECRET
@@ -46,18 +38,27 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.containerRegistrySecretName }}
                   key: {{ .Values.containerRegistrySecretKey }}
+
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.githubTokenSecretName }}
+                  key: {{ .Values.githubTokenSecretKey }}
            
             {{- else }}
            
             - name: CONTAINER_REGISTRY_SECRET
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
+
+             - name: GITHUB_TOKEN
+              value: {{ .Values.githubToken}}
          
            
             {{- end }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.infrastructure.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.infra.port }}
+              containerPort: {{ .Values.infrastructure.service.port }}
               protocol: TCP
           
          

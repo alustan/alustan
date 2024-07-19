@@ -8,13 +8,16 @@ import (
 
 const (
 	defaultSyncInterval    = 360 * time.Minute // Default sync interval 6 hrs
-	
+	defaultAppSyncInterval = 5 * time.Minute // Default app sync interval 10 mins
 )
 
-// GetSyncInterval retrieves the sync interval  from the environment variable
-// or returns the default value.
-func GetSyncInterval() time.Duration {
-	return getEnvSyncInterval("SYNC_INTERVAL", defaultSyncInterval)
+// GetSyncIntervals retrieves the sync intervals for infra and app from the environment variables
+// or returns the default values.
+func GetSyncIntervals() (time.Duration, time.Duration) {
+	infraSyncInterval := getEnvSyncInterval("INFRA_SYNC_INTERVAL", defaultSyncInterval)
+	appSyncInterval := getEnvSyncInterval("SERVICE_SYNC_INTERVAL", defaultAppSyncInterval)
+
+	return infraSyncInterval, appSyncInterval
 }
 
 // getEnvSyncInterval is a helper function that retrieves the sync interval from the specified

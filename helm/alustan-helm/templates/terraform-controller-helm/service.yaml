@@ -6,9 +6,9 @@ metadata:
   labels:
     {{- include "terraform-controller-helm.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.infrastructure.service.type }}
   ports:
-    - port: {{ .Values.service.infra.port }}
+    - port: {{ .Values.infrastructure.service.port }}
       targetPort: http
       protocol: TCP
       name: http
