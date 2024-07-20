@@ -11,12 +11,28 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// CreateOrUpdateServiceAccountAndRoles creates or updates a ServiceAccount, ClusterRole, and ClusterRoleBinding.
+// CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding.
 // It returns the ServiceAccount name and any error encountered.
 func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string) (string, error) {
 	
-	// Define Service Account
+	// Define Namespace
 	namespace := "argocd"
+	ns := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}
+
+	// Create Namespace if it doesn't exist
+	_, err := clientset.CoreV1().Namespaces().Create(context.Background(), ns, metav1.CreateOptions{})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		logger.Infof("Failed to create Namespace: %v", err)
+		return "", err
+	}
+
+	logger.Infof("Namespace %s created or already exists.", namespace)
+
+	// Define Service Account
 	saIdentifier := fmt.Sprintf("terraform-%s", name)
 	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
 	roleBindingIdentifier := fmt.Sprintf("terraform-role-binding-%s", name)
@@ -28,7 +44,7 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	}
 
 	// Create or Update Service Account
-	_, err := clientset.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
+	_, err = clientset.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		logger.Infof("Failed to create Service Account: %v", err)
 		return "", err
@@ -45,11 +61,9 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			// API group: "" (core group)
 			{
 				APIGroups: []string{""},
-				Resources: []string{ "secrets", "namespaces"},
+				Resources: []string{"secrets", "namespaces"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
 			},
-			
-			
 			// API group: "argoproj.io"
 			{
 				APIGroups: []string{"argoproj.io"},
