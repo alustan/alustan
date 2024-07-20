@@ -56,7 +56,6 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			Name: roleIdentifier,
 		},
 		Rules: []rbacv1.PolicyRule{
-		
 			// API group: "" (core group)
 			{
 				APIGroups: []string{""},
@@ -69,14 +68,12 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 				Resources: []string{"jobs"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
 			},
-			
 			// API group: "networking.k8s.io"
 			{
 				APIGroups: []string{"networking.k8s.io"},
 				Resources: []string{"ingresses"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
 			},
-		
 			// API group: "apps"
 			{
 				APIGroups: []string{"apps"},
@@ -93,6 +90,12 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			{
 				APIGroups: []string{"argoproj.io"},
 				Resources: []string{"applications", "applicationsets", "projects", "repositories"},
+				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
+			},
+			// API group: "apiextensions.k8s.io"
+			{
+				APIGroups: []string{"apiextensions.k8s.io"},
+				Resources: []string{"customresourcedefinitions"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
 			},
 		},
