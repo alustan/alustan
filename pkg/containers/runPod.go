@@ -17,6 +17,12 @@ func CreateOrUpdateRunPod(logger *zap.SugaredLogger, clientset kubernetes.Interf
 	identifier := fmt.Sprintf("%s-%s", name, service)
 	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, service)
 
+	saIdentifier, saError := CreateOrUpdateServiceAccountAndRoles(logger, clientset, name, namespace)
+	if saError != nil {
+		logger.Infof("Error creating Service Account and roles: %v", saError)
+		return "", saError
+	}
+
 	// Generate environment variables
 	env := []v1.EnvVar{}
 	for key, value := range envVars {
@@ -54,7 +60,7 @@ func CreateOrUpdateRunPod(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 	// Define the pod spec
 	podSpec := v1.PodSpec{
-		ServiceAccountName: "terraform-sa",
+		ServiceAccountName: saIdentifier,
 		Containers: []v1.Container{
 			{
 				Name:            "terraform",
