@@ -4,7 +4,7 @@ metadata:
   name: service-manager-binding
 subjects:
 - kind: ServiceAccount
-  name: {{  .Values.serviceAccount.name }}
+  name: service-sa
   namespace: alustan
 roleRef:
   kind: ClusterRole

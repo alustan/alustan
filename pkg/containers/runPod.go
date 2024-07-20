@@ -3,18 +3,17 @@ package containers
 import (
 	"context"
 	"fmt"
-    "strings"
+	"strings"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-
 // CreateOrUpdateRunPod creates or updates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateOrUpdateRunPod(logger *zap.SugaredLogger,clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
+func CreateOrUpdateRunPod(logger *zap.SugaredLogger, clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
 	identifier := fmt.Sprintf("%s-%s", name, service)
 	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, service)
 
@@ -55,6 +54,7 @@ func CreateOrUpdateRunPod(logger *zap.SugaredLogger,clientset kubernetes.Interfa
 
 	// Define the pod spec
 	podSpec := v1.PodSpec{
+		ServiceAccountName: "terraform-sa",
 		Containers: []v1.Container{
 			{
 				Name:            "terraform",
@@ -137,6 +137,3 @@ func CreateOrUpdateRunPod(logger *zap.SugaredLogger,clientset kubernetes.Interfa
 	logger.Info("Pod created successfully.")
 	return podName, nil
 }
-
-
-

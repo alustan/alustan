@@ -4,29 +4,37 @@ metadata:
   name: service-manager
 rules:
 - apiGroups: ["alustan.io"]
-  resources: ["services"]
+  resources: ["services","services/status","services/finalizers"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["alustan.io"]
-  resources: ["services/status"]
-  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
-- apiGroups: ["alustan.io"]
-  resources: ["services/finalizers"]
-  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
 - apiGroups: [""]
-  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"]
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets","namespaces"]
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
-- apiGroups: [""]
-  resources: ["namespaces"]
-  verbs: ["list", "get"]
+
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
-  verbs: ["list", "get"]
+  verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["get", "list", "watch", "create", "update", "delete"]
+
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["create", "get", "list", "watch", "update", "delete"]
+
+- apiGroups: ["argoproj.io"]
+  resources: ["applications"]
+  verbs: ["create", "get", "list", "watch", "update", "delete"]

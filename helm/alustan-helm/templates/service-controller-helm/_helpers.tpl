@@ -22,10 +22,3 @@ app: service-controller-helm
 {{- end }}
 
 
-{{- define "service-controller-helm.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default "service-controller-helm" .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
