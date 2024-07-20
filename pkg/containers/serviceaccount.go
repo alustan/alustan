@@ -59,7 +59,7 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			// API group: "" (core group)
 			{
 				APIGroups: []string{""},
-				Resources: []string{"secrets", "namespaces"},
+				Resources: []string{"secrets", "namespaces", "serviceaccounts"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
 			},
 			// API group: "argoproj.io"
