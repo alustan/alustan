@@ -11,15 +11,14 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding.
+// CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccounts in both namespaces, ClusterRole, and ClusterRoleBindings.
 // It returns the ServiceAccount name and any error encountered.
-func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string) (string, error) {
-	
+func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string, namespace string) (string, error) {
+
 	// Define Namespace
-	namespace := "argocd"
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: namespace,
+			Name: "argocd",
 		},
 	}
 
@@ -32,25 +31,34 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 
 	logger.Infof("Namespace %s created or already exists.", namespace)
 
-	// Define Service Account
 	saIdentifier := fmt.Sprintf("terraform-%s", name)
 	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
 	roleBindingIdentifier := fmt.Sprintf("terraform-role-binding-%s", name)
-	sa := &v1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      saIdentifier,
-			Namespace: namespace,
-		},
+
+	// Function to create or update Service Account
+	createOrUpdateServiceAccount := func(namespace string) error {
+		sa := &v1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      saIdentifier,
+				Namespace: namespace,
+			},
+		}
+		_, err := clientset.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			logger.Infof("Failed to create Service Account in namespace %s: %v", namespace, err)
+			return err
+		}
+		logger.Infof("Service Account %s created or already exists in namespace %s.", sa.Name, namespace)
+		return nil
 	}
 
-	// Create or Update Service Account
-	_, err = clientset.CoreV1().ServiceAccounts(namespace).Create(context.Background(), sa, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		logger.Infof("Failed to create Service Account: %v", err)
+	// Create or Update Service Account in both namespaces
+	if err := createOrUpdateServiceAccount("argocd"); err != nil {
 		return "", err
 	}
-
-	logger.Infof("Service Account %s created or already exists.", sa.Name)
+	if err := createOrUpdateServiceAccount(namespace); err != nil {
+		return "", err
+	}
 
 	// Define ClusterRole with expanded permissions
 	cr := &rbacv1.ClusterRole{
@@ -82,33 +90,41 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 
 	logger.Infof("ClusterRole %s created or already exists.", cr.Name)
 
-	// Define ClusterRoleBinding
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: roleBindingIdentifier,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      saIdentifier,
-				Namespace: namespace,
+	// Function to create or update ClusterRoleBinding
+	createOrUpdateClusterRoleBinding := func(namespace string) error {
+		crb := &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s-%s", roleBindingIdentifier, namespace),
 			},
-		},
-		RoleRef: rbacv1.RoleRef{
-			Kind:     "ClusterRole",
-			Name:     roleIdentifier,
-			APIGroup: "rbac.authorization.k8s.io",
-		},
+			Subjects: []rbacv1.Subject{
+				{
+					Kind:      "ServiceAccount",
+					Name:      saIdentifier,
+					Namespace: namespace,
+				},
+			},
+			RoleRef: rbacv1.RoleRef{
+				Kind:     "ClusterRole",
+				Name:     roleIdentifier,
+				APIGroup: "rbac.authorization.k8s.io",
+			},
+		}
+		_, err := clientset.RbacV1().ClusterRoleBindings().Create(context.Background(), crb, metav1.CreateOptions{})
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			logger.Infof("Failed to create ClusterRoleBinding in namespace %s: %v", namespace, err)
+			return err
+		}
+		logger.Infof("ClusterRoleBinding %s created or already exists in namespace %s.", crb.Name, namespace)
+		return nil
 	}
 
-	// Create or Update ClusterRoleBinding
-	_, err = clientset.RbacV1().ClusterRoleBindings().Create(context.Background(), crb, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		logger.Infof("Failed to create ClusterRoleBinding: %v", err)
+	// Create or Update ClusterRoleBinding in both namespaces
+	if err := createOrUpdateClusterRoleBinding("argocd"); err != nil {
 		return "", err
 	}
-
-	logger.Infof("ClusterRoleBinding %s created or already exists.", crb.Name)
+	if err := createOrUpdateClusterRoleBinding(namespace); err != nil {
+		return "", err
+	}
 
 	return saIdentifier, nil
 }
