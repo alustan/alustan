@@ -4,7 +4,7 @@ metadata:
   name: terraform-manager-binding
 subjects:
 - kind: ServiceAccount
-  name: {{  .Values.serviceAccount.name }}
+  name: terraform-sa
   namespace: alustan
 roleRef:
   kind: ClusterRole

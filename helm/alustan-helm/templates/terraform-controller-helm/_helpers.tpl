@@ -22,10 +22,4 @@ app: terraform-controller-helm
 {{- end }}
 
 
-{{- define "terraform-controller-helm.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default "terraform-controller-helm" .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
+

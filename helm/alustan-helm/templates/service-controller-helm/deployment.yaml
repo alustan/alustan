@@ -20,9 +20,9 @@ spec:
        
     spec:
      
-      {{- if .Values.serviceAccount.create -}}
-      serviceAccountName: {{ include "service-controller-helm.serviceAccountName" . }}
-      {{- end }}
+      
+      serviceAccountName: service-sa
+     
       
       containers:
         - name: {{ .Chart.Name }}
