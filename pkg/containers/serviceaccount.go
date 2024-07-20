@@ -13,8 +13,10 @@ import (
 
 // CreateOrUpdateServiceAccountAndRoles creates or updates a ServiceAccount, ClusterRole, and ClusterRoleBinding.
 // It returns the ServiceAccount name and any error encountered.
-func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name, namespace string) (string, error) {
+func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string) (string, error) {
+	
 	// Define Service Account
+	namespace := "argocd"
 	saIdentifier := fmt.Sprintf("terraform-%s", name)
 	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
 	roleBindingIdentifier := fmt.Sprintf("terraform-role-binding-%s", name)
