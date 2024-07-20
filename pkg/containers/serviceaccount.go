@@ -11,12 +11,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding.
+// CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding for the specified namespace.
 // It returns the ServiceAccount name and any error encountered.
-func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string) (string, error) {
-	
+func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string, namespace string) (string, error) {
+
 	// Define Namespace
-	namespace := "argocd"
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespace,
@@ -34,8 +33,6 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 
 	// Define Service Account
 	saIdentifier := fmt.Sprintf("terraform-%s", name)
-	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
-	roleBindingIdentifier := fmt.Sprintf("terraform-role-binding-%s", name)
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saIdentifier,
@@ -50,9 +47,10 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 		return "", err
 	}
 
-	logger.Infof("Service Account %s created or already exists.", sa.Name)
+	logger.Infof("Service Account %s created or already exists in namespace %s.", sa.Name, namespace)
 
 	// Define ClusterRole with expanded permissions
+	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: roleIdentifier,
@@ -83,9 +81,10 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	logger.Infof("ClusterRole %s created or already exists.", cr.Name)
 
 	// Define ClusterRoleBinding
+	roleBindingIdentifier := fmt.Sprintf("terraform-role-binding-%s", name)
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: roleBindingIdentifier,
+			Name: fmt.Sprintf("%s-%s", roleBindingIdentifier, namespace),
 		},
 		Subjects: []rbacv1.Subject{
 			{
@@ -108,7 +107,7 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 		return "", err
 	}
 
-	logger.Infof("ClusterRoleBinding %s created or already exists.", crb.Name)
+	logger.Infof("ClusterRoleBinding %s created or already exists in namespace %s.", crb.Name, namespace)
 
 	return saIdentifier, nil
 }

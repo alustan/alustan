@@ -239,6 +239,13 @@ func CreateApplicationSet(
     releaseName := observed.Spec.Source.ReleaseName
     targetRevision := observed.Spec.Source.TargetRevision
 
+     // Check if ArgoCD is installed by looking for the ArgoCD namespace
+     _, err := clientset.CoreV1().Namespaces().Get(context.TODO(), argocdNamespace, metav1.GetOptions{})
+     if err != nil {
+         logger.Info("ArgoCD is not installed in the cluster")
+         return nil, nil
+     }
+
     annotations, err := fetchSecretAnnotations(clientset, argocdNamespace, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
     if err != nil {
         if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
@@ -259,14 +266,7 @@ func CreateApplicationSet(
 	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
 
     
-    // Check if ArgoCD is installed by looking for the ArgoCD namespace
-    _, err = clientset.CoreV1().Namespaces().Get(context.TODO(), argocdNamespace, metav1.GetOptions{})
-    if err != nil {
-        logger.Info("ArgoCD is not installed in the cluster")
-        return nil, nil
-    }
-
-    var generators []appv1alpha1.ApplicationSetGenerator
+   var generators []appv1alpha1.ApplicationSetGenerator
 
     // Define generators based on the strategy
     if preview {
