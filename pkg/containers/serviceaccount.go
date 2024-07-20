@@ -50,17 +50,44 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	logger.Infof("Service Account %s created or already exists in namespace %s.", sa.Name, namespace)
 
 	// Define ClusterRole with expanded permissions
-	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
+	roleIdentifier := "terraform-manager"
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: roleIdentifier,
 		},
 		Rules: []rbacv1.PolicyRule{
+		
 			// API group: "" (core group)
 			{
 				APIGroups: []string{""},
-				Resources: []string{"secrets", "namespaces", "serviceaccounts"},
+				Resources: []string{"configmaps", "pods", "persistentvolumeclaims", "secrets", "namespaces", "serviceaccounts"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
+			},
+			// API group: "batch"
+			{
+				APIGroups: []string{"batch"},
+				Resources: []string{"jobs"},
+				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
+			},
+			
+			// API group: "networking.k8s.io"
+			{
+				APIGroups: []string{"networking.k8s.io"},
+				Resources: []string{"ingresses"},
+				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
+			},
+		
+			// API group: "apps"
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
+			},
+			// API group: "rbac.authorization.k8s.io"
+			{
+				APIGroups: []string{"rbac.authorization.k8s.io"},
+				Resources: []string{"roles", "rolebindings", "clusterroles", "clusterrolebindings"},
+				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
 			},
 			// API group: "argoproj.io"
 			{
@@ -76,6 +103,12 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		logger.Infof("Failed to create ClusterRole: %v", err)
 		return "", err
+	} else if apierrors.IsAlreadyExists(err) {
+		_, err = clientset.RbacV1().ClusterRoles().Update(context.Background(), cr, metav1.UpdateOptions{})
+		if err != nil {
+			logger.Infof("Failed to update ClusterRole: %v", err)
+			return "", err
+		}
 	}
 
 	logger.Infof("ClusterRole %s created or already exists.", cr.Name)
@@ -105,6 +138,12 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		logger.Infof("Failed to create ClusterRoleBinding: %v", err)
 		return "", err
+	} else if apierrors.IsAlreadyExists(err) {
+		_, err = clientset.RbacV1().ClusterRoleBindings().Update(context.Background(), crb, metav1.UpdateOptions{})
+		if err != nil {
+			logger.Infof("Failed to update ClusterRoleBinding: %v", err)
+			return "", err
+		}
 	}
 
 	logger.Infof("ClusterRoleBinding %s created or already exists in namespace %s.", crb.Name, namespace)
