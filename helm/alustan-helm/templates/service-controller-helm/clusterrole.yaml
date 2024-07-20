@@ -8,7 +8,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 - apiGroups: [""]
-  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets","namespaces"]
+  resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets","namespaces","serviceaccounts"]
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
 
 - apiGroups: ["batch"]
@@ -32,9 +32,9 @@ rules:
   verbs: ["create", "get", "list", "watch", "update", "delete"]
 
 - apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["roles", "rolebindings"]
+  resources: ["roles", "rolebindings","clusterroles", "clusterrolebindings"]
   verbs: ["create", "get", "list", "watch", "update", "delete"]
 
 - apiGroups: ["argoproj.io"]
-  resources: ["applications"]
+  resources: ["applications", "applicationsets", "projects", "repositories"]
   verbs: ["create", "get", "list", "watch", "update", "delete"]
