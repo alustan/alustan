@@ -77,7 +77,7 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			// API group: "apps"
 			{
 				APIGroups: []string{"apps"},
-				Resources: []string{"deployments"},
+				Resources: []string{"deployments","statefulsets"},
 				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
 			},
 			// API group: "rbac.authorization.k8s.io"
