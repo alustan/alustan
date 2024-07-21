@@ -1,5 +1,3 @@
-package containers
-
 import (
 	"context"
 	"fmt"
@@ -14,7 +12,10 @@ import (
 // CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding for the specified namespace.
 // It returns the ServiceAccount name and any error encountered.
 func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string, namespace string) (string, error) {
-
+	
+	saIdentifier := fmt.Sprintf("terraform-%s", name)
+	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
+	
 	// Define Namespace
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -32,7 +33,7 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	logger.Infof("Namespace %s created or already exists.", namespace)
 
 	// Define Service Account
-	saIdentifier := fmt.Sprintf("terraform-%s", name)
+	
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saIdentifier,
@@ -50,13 +51,12 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	logger.Infof("Service Account %s created or already exists in namespace %s.", sa.Name, namespace)
 
 	// Define ClusterRole with expanded permissions
-	roleIdentifier := "terraform-manager"
+	
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: roleIdentifier,
 		},
 		Rules: []rbacv1.PolicyRule{
-			
 			{
 				APIGroups: []string{"*"},
 				Resources: []string{"*"},
@@ -106,5 +106,6 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 
 	logger.Infof("ClusterRoleBinding %s created or already exists.", roleIdentifier)
 
+	// Return the ServiceAccount name
 	return sa.Name, nil
 }
