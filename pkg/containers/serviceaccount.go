@@ -56,63 +56,11 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 			Name: roleIdentifier,
 		},
 		Rules: []rbacv1.PolicyRule{
-			// API group: "" (core group)
-			{
-				APIGroups: []string{""},
-				Resources: []string{"configmaps", "pods", "persistentvolumeclaims", "secrets", "namespaces", "serviceaccounts", "events", "pods/log"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
-			},
-			// API group: "batch"
-			{
-				APIGroups: []string{"batch"},
-				Resources: []string{"jobs"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
-			},
-			// API group: "networking.k8s.io"
-			{
-				APIGroups: []string{"networking.k8s.io"},
-				Resources: []string{"ingresses"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
-			},
-			// API group: "apps"
-			{
-				APIGroups: []string{"apps"},
-				Resources: []string{"deployments", "statefulsets"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
-			},
-			// API group: "rbac.authorization.k8s.io"
-			{
-				APIGroups: []string{"rbac.authorization.k8s.io"},
-				Resources: []string{"roles", "rolebindings", "clusterroles", "clusterrolebindings"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
-			},
-			// API group: "argoproj.io"
-			{
-				APIGroups: []string{"argoproj.io"},
-				Resources: []string{"applications", "applicationsets", "projects", "repositories", "workflows"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete", "patch"},
-			},
-			// API group: "apiextensions.k8s.io"
-			{
-				APIGroups: []string{"apiextensions.k8s.io"},
-				Resources: []string{"customresourcedefinitions"},
-				Verbs:     []string{"create", "get", "list", "watch", "update", "delete"},
-			},
-			// Additional permissions to cover other needs
-			{
-				APIGroups: []string{"coordination.k8s.io"},
-				Resources: []string{"leases"},
-				Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
-			},
-			{
-				APIGroups: []string{"extensions"},
-				Resources: []string{"deployments"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
+			
 			{
 				APIGroups: []string{"*"},
 				Resources: []string{"*"},
-				Verbs:     []string{"get", "list", "delete", "patch"},
+				Verbs:     []string{"*"},
 			},
 			{
 				NonResourceURLs: []string{"*"},
