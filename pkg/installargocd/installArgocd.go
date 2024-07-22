@@ -92,8 +92,21 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		return fmt.Errorf("failed to download index file: %w", err)
 	}
 
-	chartName := "argo-cd"
-	install := action.NewInstall(actionConfig)  // Moved this line up
+	// Add the repository
+	repoFile := settings.RepositoryConfig
+	repoFile.Lock()
+	defer repoFile.Unlock()
+	if repoFile.Has(repoEntry.Name) == false {
+		if err := repoFile.Add(&repoEntry, settings.RepositoryCache); err != nil {
+			return fmt.Errorf("failed to add repository: %w", err)
+		}
+		if err := repoFile.WriteFile(settings.RepositoryConfig, 0644); err != nil {
+			return fmt.Errorf("failed to write repository config: %w", err)
+		}
+	}
+
+	chartName := "argo-cd/argo-cd"  
+	install := action.NewInstall(actionConfig)
 	chartPath, err := install.LocateChart(chartName, settings)
 	if err != nil {
 		return fmt.Errorf("failed to locate chart: %w", err)
@@ -138,6 +151,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 
 	return nil
 }
+
 
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 	for key, srcValue := range src {
