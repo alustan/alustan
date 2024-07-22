@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/cli/values"
@@ -107,7 +109,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		}
 	}
 
-	chartName := "argo-cd/argo-cd" // Include the repository name
+	chartName := "argo-cd/argo-cd" 
 	install := action.NewInstall(actionConfig)
 	chartPath, err := install.LocateChart(chartName, settings)
 	if err != nil {
@@ -146,30 +148,57 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 	histClient.Max = 1
 	_, err = histClient.Run("argo-cd")
 	if err == nil {
-		// If the release exists, perform an upgrade
-		upgrade := action.NewUpgrade(actionConfig)
-		upgrade.Namespace = "argocd"
-		upgrade.Wait = true
-
-		_, err = upgrade.Run("argo-cd", chart, vals)
-		if err != nil {
-			return fmt.Errorf("failed to upgrade ArgoCD with Helm: %w", err)
+		// If the release exists, perform an upgrade with retry mechanism
+		retries := 3
+		for i := 0; i < retries; i++ {
+			err = upgradeArgoCD(actionConfig, chart, vals, logger)
+			if err == nil {
+				logger.Info("ArgoCD upgraded successfully")
+				return nil
+			}
+			logger.Errorf("Upgrade attempt %d/%d failed: %v", i+1, retries, err)
+			time.Sleep(5 * time.Second) // Add a delay before retrying
 		}
-		logger.Info("ArgoCD upgraded successfully")
-	} else {
-		// If the release does not exist, perform a new installation
-		install.ReleaseName = "argo-cd"
-		install.Namespace = "argocd"
-		install.CreateNamespace = true
-		install.Wait = true
-
-		_, err = install.Run(chart, vals)
-		if err != nil {
-			return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
-		}
-		logger.Info("ArgoCD installed successfully")
+		return fmt.Errorf("failed to upgrade ArgoCD with Helm after %d attempts: %w", retries, err)
 	}
 
+	// If the release does not exist, perform a new installation with retry mechanism
+	retries := 3
+	for i := 0; i < retries; i++ {
+		err = installArgoCD(actionConfig, chart, vals, logger)
+		if err == nil {
+			logger.Info("ArgoCD installed successfully")
+			return nil
+		}
+		logger.Errorf("Install attempt %d/%d failed: %v", i+1, retries, err)
+		time.Sleep(5 * time.Second) // Add a delay before retrying
+	}
+	return fmt.Errorf("failed to install ArgoCD with Helm after %d attempts: %w", retries, err)
+}
+
+func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
+	upgrade := action.NewUpgrade(actionConfig)
+	upgrade.Namespace = "argocd"
+	upgrade.Wait = true
+
+	_, err := upgrade.Run("argo-cd", chart, vals)
+	if err != nil {
+		return fmt.Errorf("failed to upgrade ArgoCD with Helm: %w", err)
+	}
+	return nil
+}
+
+func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
+	install := action.NewInstall(actionConfig)
+	install.ReleaseName = "argo-cd"
+	install.Namespace = "argocd"
+	install.CreateNamespace = true
+	install.Wait = true
+
+	_, err := install.Run(chart, vals)
+	if err != nil {
+		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
+	}
 	return nil
 }
 
