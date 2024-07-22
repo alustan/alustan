@@ -119,11 +119,6 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
 
-	install.ReleaseName = "argo-cd"
-	install.Namespace = "argocd"
-	install.CreateNamespace = true
-	install.Wait = true
-
 	valOpts := &values.Options{}
 	defaultVals, err := valOpts.MergeValues(getter.All(settings))
 	if err != nil {
@@ -146,9 +141,33 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		vals = defaultVals
 	}
 
-	_, err = install.Run(chart, vals)
-	if err != nil {
-		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
+	// Check if the release already exists
+	histClient := action.NewHistory(actionConfig)
+	histClient.Max = 1
+	_, err = histClient.Run("argo-cd")
+	if err == nil {
+		// If the release exists, perform an upgrade
+		upgrade := action.NewUpgrade(actionConfig)
+		upgrade.Namespace = "argocd"
+		upgrade.Wait = true
+
+		_, err = upgrade.Run("argo-cd", chart, vals)
+		if err != nil {
+			return fmt.Errorf("failed to upgrade ArgoCD with Helm: %w", err)
+		}
+		logger.Info("ArgoCD upgraded successfully")
+	} else {
+		// If the release does not exist, perform a new installation
+		install.ReleaseName = "argo-cd"
+		install.Namespace = "argocd"
+		install.CreateNamespace = true
+		install.Wait = true
+
+		_, err = install.Run(chart, vals)
+		if err != nil {
+			return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
+		}
+		logger.Info("ArgoCD installed successfully")
 	}
 
 	return nil
