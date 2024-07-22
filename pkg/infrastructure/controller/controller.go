@@ -87,6 +87,9 @@ func NewInClusterController(syncInterval time.Duration) *Controller {
 		sugar.Fatalf("Error creating in-cluster config: %v", err)
 	}
 
+	config.QPS = 100.0
+    config.Burst = 200
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		sugar.Fatalf("Error creating Kubernetes clientset: %v", err)

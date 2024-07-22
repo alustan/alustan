@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -74,7 +75,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 	settings := cli.New()
 	actionConfig := new(action.Configuration)
 
-	err := actionConfig.Init(settings.RESTClientGetter(), "argocd", "", logger.Infof) // No HELM_DRIVER specified
+	err := actionConfig.Init(settings.RESTClientGetter(), "argocd", "", logger.Infof)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Helm action configuration: %w", err)
 	}
@@ -109,7 +110,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		}
 	}
 
-	chartName := "argo-cd/argo-cd" 
+	chartName := "argo-cd/argo-cd"
 	install := action.NewInstall(actionConfig)
 	chartPath, err := install.LocateChart(chartName, settings)
 	if err != nil {
@@ -149,37 +150,22 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 	_, err = histClient.Run("argo-cd")
 	if err == nil {
 		// If the release exists, perform an upgrade with retry mechanism
-		retries := 3
-		for i := 0; i < retries; i++ {
-			err = upgradeArgoCD(actionConfig, chart, vals, logger)
-			if err == nil {
-				logger.Info("ArgoCD upgraded successfully")
-				return nil
-			}
-			logger.Errorf("Upgrade attempt %d/%d failed: %v", i+1, retries, err)
-			time.Sleep(5 * time.Second) // Add a delay before retrying
-		}
-		return fmt.Errorf("failed to upgrade ArgoCD with Helm after %d attempts: %w", retries, err)
+		return wait.ExponentialBackoff(retryBackoff(), func() (bool, error) {
+			return false, upgradeArgoCD(actionConfig, chart, vals, logger)
+		})
 	}
 
 	// If the release does not exist, perform a new installation with retry mechanism
-	retries := 3
-	for i := 0; i < retries; i++ {
-		err = installArgoCD(actionConfig, chart, vals, logger)
-		if err == nil {
-			logger.Info("ArgoCD installed successfully")
-			return nil
-		}
-		logger.Errorf("Install attempt %d/%d failed: %v", i+1, retries, err)
-		time.Sleep(5 * time.Second) // Add a delay before retrying
-	}
-	return fmt.Errorf("failed to install ArgoCD with Helm after %d attempts: %w", retries, err)
+	return wait.ExponentialBackoff(retryBackoff(), func() (bool, error) {
+		return false, installArgoCD(actionConfig, chart, vals, logger)
+	})
 }
 
 func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
 	upgrade := action.NewUpgrade(actionConfig)
 	upgrade.Namespace = "argocd"
 	upgrade.Wait = true
+	upgrade.Timeout = 20 * time.Minute // Set timeout to 20 minutes
 
 	_, err := upgrade.Run("argo-cd", chart, vals)
 	if err != nil {
@@ -194,6 +180,7 @@ func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals 
 	install.Namespace = "argocd"
 	install.CreateNamespace = true
 	install.Wait = true
+	install.Timeout = 20 * time.Minute // Set timeout to 20 minutes
 
 	_, err := install.Run(chart, vals)
 	if err != nil {
@@ -215,4 +202,12 @@ func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 		dst[key] = srcValue
 	}
 	return dst
+}
+
+func retryBackoff() wait.Backoff {
+	return wait.Backoff{
+		Duration: 5 * time.Second, // Initial delay
+		Factor:   2,               // Exponential factor
+		Steps:    3,               // Number of retry attempts
+	}
 }
