@@ -73,11 +73,12 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 	settings := cli.New()
 	actionConfig := new(action.Configuration)
 
-	err := actionConfig.Init(settings.RESTClientGetter(), "argocd", os.Getenv("HELM_DRIVER"), logger.Infof)
+	err := actionConfig.Init(settings.RESTClientGetter(), "argocd", "", logger.Infof) // No HELM_DRIVER specified
 	if err != nil {
 		return fmt.Errorf("failed to initialize Helm action configuration: %w", err)
 	}
 
+	// Add the repository
 	repoEntry := repo.Entry{
 		Name: "argo-cd",
 		URL:  "https://argoproj.github.io/argo-helm",
@@ -92,20 +93,22 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		return fmt.Errorf("failed to download index file: %w", err)
 	}
 
-	// Add the repository
-	repoFile := settings.RepositoryConfig
-	repoFile.Lock()
-	defer repoFile.Unlock()
-	if repoFile.Has(repoEntry.Name) == false {
-		if err := repoFile.Add(&repoEntry, settings.RepositoryCache); err != nil {
-			return fmt.Errorf("failed to add repository: %w", err)
+	repoFile := &repo.File{}
+	if _, err := os.Stat(settings.RepositoryConfig); err == nil {
+		repoFile, err = repo.LoadFile(settings.RepositoryConfig)
+		if err != nil {
+			return fmt.Errorf("failed to load repository config: %w", err)
 		}
+	}
+
+	if !repoFile.Has(repoEntry.Name) {
+		repoFile.Update(&repoEntry)
 		if err := repoFile.WriteFile(settings.RepositoryConfig, 0644); err != nil {
 			return fmt.Errorf("failed to write repository config: %w", err)
 		}
 	}
 
-	chartName := "argo-cd/argo-cd"  
+	chartName := "argo-cd/argo-cd" // Include the repository name
 	install := action.NewInstall(actionConfig)
 	chartPath, err := install.LocateChart(chartName, settings)
 	if err != nil {
