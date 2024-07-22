@@ -1,6 +1,5 @@
 package installargocd
 
-
 import (
 	"context"
 	"fmt"
@@ -133,7 +132,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 
 	var vals map[string]interface{}
 	if argocdConfig != "" {
-		// Parse the provided values
+		// Parse the provided YAML values
 		providedVals := map[string]interface{}{}
 		err = yaml.Unmarshal([]byte(argocdConfig), &providedVals)
 		if err != nil {
@@ -141,9 +140,9 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 		}
 
 		// Merge default values with provided values
-		mergedVals := deepMerge(defaultVals, providedVals)
-		vals = mergedVals
+		vals = deepMerge(defaultVals, providedVals)
 	} else {
+		// Use default values if no configuration is provided
 		vals = defaultVals
 	}
 
@@ -154,7 +153,6 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version stri
 
 	return nil
 }
-
 
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 	for key, srcValue := range src {
