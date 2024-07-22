@@ -6,11 +6,7 @@
 
  **Service-controller**
 
-- The `Service controller` installs argocd by default with option to pass in any of the supported argocd values in the controller helm chart.
-
-> If argocd is already installed in the cluster it skips installation
-
-- The `Service controller` extracts external resource metadata from **alustan cluster secret**, therefore it is expected that when provisioning your infrastructure the metadata should be stored in a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
+- The `Service controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
 
 > should have a labelkey `environment` and a value which is same as that specified in the **workspace field**
 
@@ -70,7 +66,7 @@ values:
 
 **Your Pullrequest label tag should be `preview`**
 
-> If you wish to expose the application running on an epheramal environment via `Ingress` the controller expects the Ingress field to be structured as specified below in your helm chart to be able to dyanmically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
+> If you wish to expose the application running on an epheramal environment via `Ingress` the controller expects the Ingress field to be structured as specified below in your helm chart so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
 > 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -156,7 +152,7 @@ postDeploy:
 ``` 
 > **The output of your `postDeploy` script should match `(map[string]interface{}` with `outputs` key at top level**
 
-> **key: is a `string` body: `any arbitrary data structure`**
+> **key: is a `string`, body: `any arbitrary data structure`**
 
 
 ```yaml

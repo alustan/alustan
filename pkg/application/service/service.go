@@ -24,7 +24,7 @@ import (
 	"github.com/alustan/alustan/pkg/application/errorstatus"
 	kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
 	"github.com/alustan/alustan/api/service/v1alpha1"
-    "github.com/alustan/alustan/pkg/installargocd"
+  
     
  
 )
@@ -53,12 +53,7 @@ func RunService(
         Message: "Running Service",
     }
 
-    err := installargocd.InstallArgoCD(logger, clientset, dynamicClient)
-    if err != nil {
-        return errorstatus.ErrorResponse(logger, "Failed to install ArgoCD", err)
-    }
-
-    // Extract dependencies
+   // Extract dependencies
     dependencies := ExtractDependencies(observed)
 
     // Check if all dependent ApplicationSets are healthy before proceeding
@@ -66,7 +61,7 @@ func RunService(
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
-    err = WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
+    err := WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err)
     }

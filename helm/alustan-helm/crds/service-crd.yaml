@@ -105,8 +105,7 @@ spec:
                 type: string
             required:
             - containerRegistry
-            - dependencies
-            - previewEnvironment
+          
             - source
             - workspace
             type: object

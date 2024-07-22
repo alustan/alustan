@@ -1,27 +1,25 @@
 package installargocd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
-	"time"
 
 	"go.uber.org/zap"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/cli/values"
+	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/yaml"
-	yamlmarshal "sigs.k8s.io/yaml"
+	"sigs.k8s.io/yaml"
 )
 
-func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface) error {
+func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface, version string) error {
 	// Check if ArgoCD is already installed
 	installed, err := isArgoCDInstalled(clientset)
 	if err != nil {
@@ -32,28 +30,14 @@ func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dy
 		logger.Info("ArgoCD is already installed")
 		return nil
 	}
-	
+
 	// Get ArgoCD configuration from environment variable
 	argocdConfig := os.Getenv("ARGOCD_CONFIG")
 
-	// Apply the ArgoCD manifest with or without configurations
-	if argocdConfig != "" {
-		// Parse ArgoCD configuration
-		parsedConfig := make(map[string]interface{})
-		err = yaml.Unmarshal([]byte(argocdConfig), &parsedConfig)
-		if err != nil {
-			return fmt.Errorf("failed to parse ArgoCD configuration: %w", err)
-		}
-
-		err = applyManifestWithValues(dynClient, parsedConfig)
-		if err != nil {
-			return fmt.Errorf("failed to apply ArgoCD manifest with values: %w", err)
-		}
-	} else {
-		err = applyManifestWithoutValues(dynClient)
-		if err != nil {
-			return fmt.Errorf("failed to apply ArgoCD manifest without values: %w", err)
-		}
+	// Install ArgoCD using Helm
+	err = installArgoCDWithHelm(logger, argocdConfig, version)
+	if err != nil {
+		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
 	}
 
 	logger.Info("ArgoCD installed successfully")
@@ -84,76 +68,74 @@ func isArgoCDInstalled(clientset kubernetes.Interface) (bool, error) {
 	return true, nil
 }
 
-func applyManifestWithValues(dynClient dynamic.Interface, values map[string]interface{}) error {
-	resp, err := fetchArgoCDManifest()
+func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version string) error {
+	settings := cli.New()
+	actionConfig := new(action.Configuration)
+
+	err := actionConfig.Init(settings.RESTClientGetter(), "argocd", os.Getenv("HELM_DRIVER"), logger.Infof)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to initialize Helm action configuration: %w", err)
 	}
-	defer resp.Body.Close()
 
-	manifest, err := io.ReadAll(resp.Body)
+	repoEntry := repo.Entry{
+		Name: "argo-cd",
+		URL:  "https://argoproj.github.io/argo-helm",
+	}
+	chartRepo, err := repo.NewChartRepository(&repoEntry, getter.All(settings))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create chart repository: %w", err)
 	}
 
-	// Apply the parsed configurations to the manifest
-	modifiedManifest, err := applyValuesToManifest(manifest, values)
+	_, err = chartRepo.DownloadIndexFile()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download index file: %w", err)
 	}
 
-	return applyManifest(dynClient, modifiedManifest)
-}
-
-func applyManifestWithoutValues(dynClient dynamic.Interface) error {
-	resp, err := fetchArgoCDManifest()
+	chartName := "argo-cd"
+	install := action.NewInstall(actionConfig)  // Moved this line up
+	chartPath, err := install.LocateChart(chartName, settings)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to locate chart: %w", err)
 	}
-	defer resp.Body.Close()
 
-	manifest, err := io.ReadAll(resp.Body)
+	chart, err := loader.Load(chartPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load chart: %w", err)
 	}
 
-	return applyManifest(dynClient, manifest)
-}
+	install.ReleaseName = "argo-cd"
+	install.Namespace = "argocd"
+	install.CreateNamespace = true
+	install.Wait = true
 
-func fetchArgoCDManifest() (*http.Response, error) {
-	// Ensure HTTP client has a timeout for safety
-	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-
-	// Fetch the manifest using HTTP GET
-	resp, err := client.Get("https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml")
+	valOpts := &values.Options{}
+	defaultVals, err := valOpts.MergeValues(getter.All(settings))
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to get default values: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch ArgoCD manifest, status code: %d", resp.StatusCode)
+	var vals map[string]interface{}
+	if argocdConfig != "" {
+		// Parse the provided values
+		providedVals := map[string]interface{}{}
+		err = yaml.Unmarshal([]byte(argocdConfig), &providedVals)
+		if err != nil {
+			return fmt.Errorf("failed to parse ArgoCD configuration: %w", err)
+		}
+
+		// Merge default values with provided values
+		mergedVals := deepMerge(defaultVals, providedVals)
+		vals = mergedVals
+	} else {
+		vals = defaultVals
 	}
 
-	return resp, nil
-}
-
-func applyValuesToManifest(manifest []byte, values map[string]interface{}) ([]byte, error) {
-	var manifestMap map[string]interface{}
-	err := yaml.Unmarshal(manifest, &manifestMap)
+	_, err = install.Run(chart, vals)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
 	}
 
-	mergedMap := deepMerge(manifestMap, values)
-
-	modifiedManifest, err := yamlmarshal.Marshal(mergedMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal modified manifest: %w", err)
-	}
-
-	return modifiedManifest, nil
+	return nil
 }
 
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
@@ -169,31 +151,4 @@ func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 		dst[key] = srcValue
 	}
 	return dst
-}
-
-func applyManifest(dynClient dynamic.Interface, manifest []byte) error {
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(manifest), 4096)
-	for {
-		unstruct := &unstructured.Unstructured{}
-		err := decoder.Decode(unstruct)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		gvr := schema.GroupVersionResource{
-			Group:    unstruct.GetObjectKind().GroupVersionKind().Group,
-			Version:  unstruct.GetObjectKind().GroupVersionKind().Version,
-			Resource: strings.ToLower(unstruct.GetKind()) + "s",
-		}
-
-		_, err = dynClient.Resource(gvr).Namespace(unstruct.GetNamespace()).Create(context.TODO(), unstruct, metav1.CreateOptions{})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

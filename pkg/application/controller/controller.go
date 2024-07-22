@@ -34,6 +34,7 @@ import (
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/application/listers"
 	Kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
+	"github.com/alustan/alustan/pkg/installargocd"
 )
 
 type Controller struct {
@@ -61,6 +62,11 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 	sugar := logger.Sugar()
+
+	argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient,"6.6.0")
+    if argoerr != nil {
+        sugar.Fatal(argoerr.Error())
+    }
 
 	argoURL := "http://argocd-server.argocd.svc.cluster.local"
 
