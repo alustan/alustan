@@ -6,11 +6,11 @@
 
  **Service-controller**
 
-- The `Service controller` assumes that argocd is running in the cluster 
+- The `Service controller` installs argocd by default with option to pass in any of the supported argocd values in the controller helm chart.
 
-- The `Service controller` extracts external resource metadata from **argocd cluster secret**, therefore it is expected that when provisioning your infrastructure the metadata should be stored in **argocd cluster secret**.
+> If argocd is already installed in the cluster it skips installation
 
-> the cluster secret name should be `in-cluster`
+- The `Service controller` extracts external resource metadata from **alustan cluster secret**, therefore it is expected that when provisioning your infrastructure the metadata should be stored in a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
 
 > should have a labelkey `environment` and a value which is same as that specified in the **workspace field**
 

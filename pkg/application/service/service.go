@@ -24,6 +24,8 @@ import (
 	"github.com/alustan/alustan/pkg/application/errorstatus"
 	kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
 	"github.com/alustan/alustan/api/service/v1alpha1"
+    "github.com/alustan/alustan/pkg/installargocd"
+    
  
 )
 
@@ -51,6 +53,11 @@ func RunService(
         Message: "Running Service",
     }
 
+    err := installargocd.InstallArgoCD(logger, clientset, dynamicClient)
+    if err != nil {
+        return errorstatus.ErrorResponse(logger, "Failed to install ArgoCD", err)
+    }
+
     // Extract dependencies
     dependencies := ExtractDependencies(observed)
 
@@ -59,7 +66,7 @@ func RunService(
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
-    err := WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
+    err = WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err)
     }
@@ -98,8 +105,10 @@ func RunService(
 
 
 
-func fetchSecretAnnotations(clientset kubernetes.Interface, argocdNamespace, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue string) (map[string]string, error) {
-	secrets, err := clientset.CoreV1().Secrets(argocdNamespace).List(context.TODO(), metav1.ListOptions{
+
+func fetchSecretAnnotations(clientset kubernetes.Interface,  secretTypeLabel, secretTypeValue, environmentLabel, environmentValue string) (map[string]string, error) {
+	
+    secrets, err := clientset.CoreV1().Secrets("alustan").List(context.TODO(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", secretTypeLabel, secretTypeValue),
 	})
 	if err != nil {
@@ -224,7 +233,7 @@ func CreateApplicationSet(
 ) (*appv1alpha1.ApplicationSetStatus, error) {
 
     argocdNamespace := "argocd"
-    secretTypeLabel := "argocd.argoproj.io/secret-type"
+    secretTypeLabel := "alustan.io/secret-type"
     secretTypeValue := "cluster"
     environmentLabel := "environment"
     environmentValue := observed.Spec.Workspace
@@ -239,14 +248,8 @@ func CreateApplicationSet(
     releaseName := observed.Spec.Source.ReleaseName
     targetRevision := observed.Spec.Source.TargetRevision
 
-     // Check if ArgoCD is installed by looking for the ArgoCD namespace
-     _, err := clientset.CoreV1().Namespaces().Get(context.TODO(), argocdNamespace, metav1.GetOptions{})
-     if err != nil {
-         logger.Info("ArgoCD is not installed in the cluster")
-         return nil, nil
-     }
-
-    annotations, err := fetchSecretAnnotations(clientset, argocdNamespace, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
+    
+    annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
     if err != nil {
         if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
             // Return an empty ApplicationSet and log the error

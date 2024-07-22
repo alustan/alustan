@@ -31,6 +31,11 @@ spec:
           env:
             - name: SERVICE_SYNC_INTERVAL
               value: {{ .Values.service.syncInterval }}
+
+            - name: ARGOCD_CONFIG
+              value: {{ .Values.argocdConfig }}
+
+              
            
           {{- if .Values.useSecrets }}
             - name: CONTAINER_REGISTRY_SECRET

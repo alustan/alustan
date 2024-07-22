@@ -39,8 +39,6 @@ spec:
           spec:
             description: ServiceSpec defines the desired state of Service
             properties:
-              cluster:
-                type: string
               containerRegistry:
                 description: ContainerRegistry defines the container registry information
                 properties:
@@ -67,13 +65,26 @@ spec:
                 required:
                 - service
                 type: object
-              preview:
-                type: boolean
+              previewEnvironment:
+                properties:
+                  enabled:
+                    type: boolean
+                  gitOwner:
+                    type: string
+                  gitRepo:
+                    type: string
+                required:
+                - enabled
+                - gitOwner
+                - gitRepo
+                type: object
               source:
                 description: SourceSpec defines the source repository and deployment
                   values
                 properties:
                   path:
+                    type: string
+                  releaseName:
                     type: string
                   repoURL:
                     type: string
@@ -81,31 +92,108 @@ spec:
                     type: string
                   values:
                     additionalProperties:
-                      type: object
+                      
                       x-kubernetes-preserve-unknown-fields: true
                     type: object
                 required:
                 - path
+                - releaseName
                 - repoURL
                 - targetRevision
                 type: object
+              workspace:
+                type: string
             required:
-            - cluster
             - containerRegistry
             - dependencies
-            - preview
+            - previewEnvironment
             - source
+            - workspace
             type: object
           status:
             description: ServiceStatus defines the observed state of Service
             properties:
+              healthStatus:
+                description: ApplicationSetStatus defines the observed state of ApplicationSet
+                properties:
+                  applicationStatus:
+                    items:
+                      description: ApplicationSetApplicationStatus contains details
+                        about each Application managed by the ApplicationSet
+                      properties:
+                        application:
+                          description: Application contains the name of the Application
+                            resource
+                          type: string
+                        lastTransitionTime:
+                          description: LastTransitionTime is the time the status was
+                            last updated
+                          format: date-time
+                          type: string
+                        message:
+                          description: Message contains human-readable message indicating
+                            details about the status
+                          type: string
+                        status:
+                          description: 'Status contains the AppSet''s perceived status
+                            of the managed Application resource: (Waiting, Pending,
+                            Progressing, Healthy)'
+                          type: string
+                        step:
+                          description: Step tracks which step this Application should
+                            be updated in
+                          type: string
+                      required:
+                      - application
+                      - message
+                      - status
+                      - step
+                      type: object
+                    type: array
+                  conditions:
+                    description: |-
+                      INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                      Important: Run "make" to regenerate code after modifying this file
+                    items:
+                      description: ApplicationSetCondition contains details about
+                        an applicationset condition, which is usally an error or warning
+                      properties:
+                        lastTransitionTime:
+                          description: LastTransitionTime is the time the condition
+                            was last observed
+                          format: date-time
+                          type: string
+                        message:
+                          description: Message contains human-readable message indicating
+                            details about condition
+                          type: string
+                        reason:
+                          description: Single word camelcase representing the reason
+                            for the status eg ErrorOccurred
+                          type: string
+                        status:
+                          description: True/False/Unknown
+                          type: string
+                        type:
+                          description: Type is an applicationset condition type
+                          type: string
+                      required:
+                      - message
+                      - reason
+                      - status
+                      - type
+                      type: object
+                    type: array
+                type: object
               message:
+                type: string
+              observedGeneration:
+                type: integer
+              previewURLs:
                 additionalProperties:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 type: object
-              observedGeneration:
-                type: integer
               state:
                 type: string
             required:
