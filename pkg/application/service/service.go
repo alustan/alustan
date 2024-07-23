@@ -261,6 +261,18 @@ func CreateApplicationSet(
 		return nil, fmt.Errorf("failed to convert values: %v", err)
 	}
 
+       // Check if annotations is nil
+       if annotations == nil {
+        // Check if values contain placeholders like ${workspace.}
+        if containsPlaceholders(convertedValues, "${workspace.") {
+            logger.Error("No annotations found and values contain placeholders")
+            return nil, nil
+        } else {
+            logger.Warn("No annotations found, but no placeholders in values, continuing execution")
+        }
+    }
+
+
 	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
 
     
@@ -604,4 +616,27 @@ func convertToRawExtensionMap(values map[string]interface{}) (map[string]runtime
         result[key] = runtime.RawExtension{Raw: raw}
     }
     return result, nil
+}
+
+// Helper function to check for placeholders
+func containsPlaceholders(values interface{}, placeholder string) bool {
+    switch v := values.(type) {
+    case map[string]interface{}:
+        for _, val := range v {
+            if containsPlaceholders(val, placeholder) {
+                return true
+            }
+        }
+    case []interface{}:
+        for _, val := range v {
+            if containsPlaceholders(val, placeholder) {
+                return true
+            }
+        }
+    case string:
+        if strings.Contains(v, placeholder) {
+            return true
+        }
+    }
+    return false
 }
