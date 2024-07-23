@@ -129,6 +129,72 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
 	var builder strings.Builder
 	var clusterValue string
 
+    if len(values) == 0 {
+		return builder.String(), clusterValue
+	}
+
+	// Check if the output map is empty
+	if len(output) == 0 {
+		// Handle the case where the output map is empty
+		// Returning the values as they are since there are no replacements
+		for key, value := range values {
+			switch v := value.(type) {
+			case string:
+				fmt.Fprintf(&builder, "%s: %s\n", key, v)
+				if key == "cluster" {
+					clusterValue = v
+				}
+			case map[string]interface{}:
+				if key == "ingress" {
+					ingressMap := v
+					for ingressKey, ingressValue := range ingressMap {
+						switch iv := ingressValue.(type) {
+						case []interface{}:
+							if ingressKey == "hosts" {
+								var updatedHosts []interface{}
+								for _, host := range iv {
+									hostStr, ok := host.(string)
+									if ok && preview {
+										hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
+									}
+									updatedHosts = append(updatedHosts, hostStr)
+								}
+								ingressMap[ingressKey] = updatedHosts
+							} else if ingressKey == "tls" {
+								for _, tlsItem := range iv {
+									tlsMap, ok := tlsItem.(map[string]interface{})
+									if ok {
+										if tlsHosts, exists := tlsMap["hosts"]; exists {
+											var updatedTlsHosts []interface{}
+											for _, tlsHost := range tlsHosts.([]interface{}) {
+												tlsHostStr, ok := tlsHost.(string)
+												if ok && preview {
+													tlsHostStr = fmt.Sprintf("%s-%s", prefix, tlsHostStr)
+												}
+												updatedTlsHosts = append(updatedTlsHosts, tlsHostStr)
+											}
+											tlsMap["hosts"] = updatedTlsHosts
+										}
+									}
+								}
+							}
+						}
+					}
+					v = ingressMap
+				}
+
+				nestedOutput, nestedClusterValue := replaceWorkspaceValues(v, output, preview, prefix)
+				fmt.Fprintf(&builder, "%s:\n%s\n", key, indent(nestedOutput, "  "))
+				if nestedClusterValue != "" {
+					clusterValue = nestedClusterValue
+				}
+			default:
+				fmt.Fprintf(&builder, "%s: %v\n", key, value)
+			}
+		}
+		return builder.String(), clusterValue
+	}
+
 	for key, value := range values {
 		switch v := value.(type) {
 		case string:
@@ -187,6 +253,7 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
 	}
 	return builder.String(), clusterValue
 }
+
 
 func indent(text, prefix string) string {
 	var indented strings.Builder
@@ -262,7 +329,7 @@ func CreateApplicationSet(
 	}
 
        // Check if annotations is nil
-       if annotations == nil {
+    if annotations == nil {
         // Check if values contain placeholders like ${workspace.}
         if containsPlaceholders(convertedValues, "${workspace.") {
             logger.Error("No annotations found and values contain placeholders")
@@ -270,8 +337,10 @@ func CreateApplicationSet(
         } else {
             logger.Warn("No annotations found, but no placeholders in values, continuing execution")
         }
+    } else {
+        // Initialize annotations if it's nil to prevent further nil dereference
+        annotations = make(map[string]string)
     }
-
 
 	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
 
