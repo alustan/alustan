@@ -23,22 +23,12 @@ import (
 )
 
 func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface, version string) error {
-	// Check if ArgoCD is already installed
-	installed, err := isArgoCDInstalled(clientset)
-	if err != nil {
-		return fmt.Errorf("failed to check if ArgoCD is installed: %w", err)
-	}
-
-	if installed {
-		logger.Info("ArgoCD is already installed")
-		return nil
-	}
-
+  
 	// Get ArgoCD configuration from environment variable
 	argocdConfig := os.Getenv("ARGOCD_CONFIG")
 
 	// Install ArgoCD using Helm
-	err = installArgoCDWithHelm(logger, argocdConfig, version)
+	err := installArgoCDWithHelm(logger, clientset,argocdConfig, version)
 	if err != nil {
 		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
 	}
@@ -47,31 +37,48 @@ func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dy
 	return nil
 }
 
-func isArgoCDInstalled(clientset kubernetes.Interface) (bool, error) {
+func isArgoCDInstalledAndReady(clientset kubernetes.Interface) (bool, bool, error) {
 	_, err := clientset.CoreV1().Namespaces().Get(context.TODO(), "argocd", metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 
 	// Check for the presence of ArgoCD components
 	deployments := []string{"argocd-server", "argocd-repo-server", "argocd-application-controller"}
 	for _, deployment := range deployments {
-		_, err = clientset.AppsV1().Deployments("argocd").Get(context.TODO(), deployment, metav1.GetOptions{})
+		deploy, err := clientset.AppsV1().Deployments("argocd").Get(context.TODO(), deployment, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
-				return false, nil
+				return false, false, nil
 			}
-			return false, err
+			return false, false, err
+		}
+
+		// Check if the number of ready replicas matches the desired replicas
+		if deploy.Status.ReadyReplicas != *deploy.Spec.Replicas {
+			return true, false, nil // Components are installed but not ready
 		}
 	}
 
-	return true, nil
+	return true, true, nil // All components are installed and ready
 }
 
-func installArgoCDWithHelm(logger *zap.SugaredLogger, argocdConfig, version string) error {
+
+func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Interface, argocdConfig, version string) error {
+
+	// Check if ArgoCD is already installed and ready
+	installed, ready, argerr := isArgoCDInstalledAndReady(clientset)
+	if argerr != nil {
+		return fmt.Errorf("failed to check if ArgoCD is installed and ready: %w", argerr)
+	}
+
+	if installed && ready {
+		logger.Info("ArgoCD is already installed and ready")
+		return nil
+	}
 	settings := cli.New()
 	actionConfig := new(action.Configuration)
 
@@ -166,6 +173,7 @@ func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals 
 	upgrade.Namespace = "argocd"
 	upgrade.Wait = true
 	upgrade.Timeout = 20 * time.Minute // Set timeout to 20 minutes
+	upgrade.Atomic = true // Enable atomic option
 
 	_, err := upgrade.Run("argo-cd", chart, vals)
 	if err != nil {
@@ -181,6 +189,7 @@ func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals 
 	install.CreateNamespace = true
 	install.Wait = true
 	install.Timeout = 20 * time.Minute // Set timeout to 20 minutes
+	install.Atomic = true // Enable atomic option
 
 	_, err := install.Run(chart, vals)
 	if err != nil {
