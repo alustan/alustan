@@ -99,31 +99,34 @@ func RunService(
 }
 
 
+func fetchSecretAnnotations(
+    clientset kubernetes.Interface, 
+    secretTypeLabel, secretTypeValue, environmentLabel, environmentValue string,
+) (map[string]string, error) {
 
-
-func fetchSecretAnnotations(clientset kubernetes.Interface,  secretTypeLabel, secretTypeValue, environmentLabel, environmentValue string) (map[string]string, error) {
-	
     secrets, err := clientset.CoreV1().Secrets("alustan").List(context.TODO(), metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s", secretTypeLabel, secretTypeValue),
-	})
-	if err != nil {
-		return nil, err
-	}
+        LabelSelector: fmt.Sprintf("%s=%s", secretTypeLabel, secretTypeValue),
+    })
+    if err != nil {
+        return nil, err
+    }
 
-	var matchedSecret *corev1.Secret
-	for _, secret := range secrets.Items {
-		if value, ok := secret.Labels[environmentLabel]; ok && value == environmentValue {
-			matchedSecret = &secret
-			break
-		}
-	}
+    var matchedSecret *corev1.Secret
+    for _, secret := range secrets.Items {
+        if value, ok := secret.Labels[environmentLabel]; ok && value == environmentValue {
+            matchedSecret = &secret
+            break
+        }
+    }
 
-	if matchedSecret == nil {
-		return nil, fmt.Errorf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
-	}
+    if matchedSecret == nil {
+        // Return an empty map instead of nil to avoid nil pointer dereference
+        return map[string]string{}, fmt.Errorf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
+    }
 
-	return matchedSecret.Annotations, nil
+    return matchedSecret.Annotations, nil
 }
+
 
 func replaceWorkspaceValues(values map[string]interface{}, output map[string]string, preview bool, prefix string) (string, string) {
 	var builder strings.Builder
@@ -328,19 +331,17 @@ func CreateApplicationSet(
 		return nil, fmt.Errorf("failed to convert values: %v", err)
 	}
 
-       // Check if annotations is nil
-    if annotations == nil {
-        // Check if values contain placeholders like ${workspace.}
-        if containsPlaceholders(convertedValues, "${workspace.") {
-            logger.Error("No annotations found and values contain placeholders")
-            return nil, nil
-        } else {
-            logger.Warn("No annotations found, but no placeholders in values, continuing execution")
-        }
+  // Check if annotations is empty
+  if len(annotations) == 0 {
+    // Check if values contain placeholders like ${workspace.}
+    if containsPlaceholders(convertedValues, "${workspace.") {
+        logger.Error("No annotations found and values contain placeholders")
+        return nil, nil
     } else {
-        // Initialize annotations if it's nil to prevent further nil dereference
-        annotations = make(map[string]string)
+        logger.Warn("No annotations found, but no placeholders in values, continuing execution")
     }
+}
+
 
 	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
 
