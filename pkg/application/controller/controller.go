@@ -56,6 +56,18 @@ type Controller struct {
 	
 }
 
+// Ensure the setup function is called only once
+var setupOnce sync.Once
+
+func setupArgoCD(sugar *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface) {
+	setupOnce.Do(func() {
+		argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "6.6.0")
+		if argoerr != nil {
+			sugar.Fatal(argoerr.Error())
+		}
+	})
+}
+
 
 // NewController initializes a new controller
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
@@ -63,10 +75,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient,"6.6.0")
-    if argoerr != nil {
-        sugar.Fatal(argoerr.Error())
-    }
+	setupArgoCD(sugar, clientset, dynClient)
 
 	argoURL := "http://argocd-server.argocd.svc.cluster.local"
 
