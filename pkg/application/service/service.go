@@ -72,6 +72,13 @@ func RunService(
         return errorstatus.ErrorResponse(logger, "Running Service", err)
     }
 
+    // Ensure appStatus is not nil before dereferencing
+    if appStatus == nil {
+        status.State = "Failed"
+        status.Message = "ApplicationSet creation failed"
+        return status
+    }
+
     // Fetch and validate Ingress URLs
     ingressURLs, err := kubernetespkg.GetAllIngressURLs(clientset)
     if err != nil {
