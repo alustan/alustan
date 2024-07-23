@@ -171,7 +171,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
 	upgrade := action.NewUpgrade(actionConfig)
 	upgrade.Namespace = "argocd"
-	upgrade.Wait = true
+	upgrade.Wait = false
 	upgrade.Timeout = 20 * time.Minute // Set timeout to 20 minutes
 	upgrade.Atomic = true // Enable atomic option
 
@@ -187,7 +187,7 @@ func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals 
 	install.ReleaseName = "argo-cd"
 	install.Namespace = "argocd"
 	install.CreateNamespace = true
-	install.Wait = true
+	install.Wait = false
 	install.Timeout = 20 * time.Minute // Set timeout to 20 minutes
 	install.Atomic = true // Enable atomic option
 
