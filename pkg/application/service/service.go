@@ -264,6 +264,7 @@ func CreateApplicationSet(
 	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
 
     
+    
    var generators []appv1alpha1.ApplicationSetGenerator
 
     // Define generators based on the strategy
