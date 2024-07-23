@@ -22,8 +22,8 @@ var (
 // AddToScheme adds the custom resource types to the scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemaGroupVersion,
-	 &Service{},
-	 &ServiceList{},
+	 &App{},
+	 &AppList{},
 	)
 
    metav1.AddToGroupVersion(scheme,SchemaGroupVersion)

@@ -29,7 +29,7 @@ import (
 	
 
 	"github.com/alustan/alustan/pkg/application/registry"
-	"github.com/alustan/alustan/api/service/v1alpha1"
+	"github.com/alustan/alustan/api/app/v1alpha1"
 	"github.com/alustan/alustan/pkg/application/service"
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/application/listers"
@@ -43,9 +43,9 @@ type Controller struct {
 	syncInterval     time.Duration
 	lastSyncTime     time.Time
 	workqueue        workqueue.RateLimitingInterface
-	serviceLister    listers.ServiceLister
-	informerFactory  dynamicinformer.DynamicSharedInformerFactory // Shared informer factory for Service resources
-	informer         cache.SharedIndexInformer                    // Informer for Service resources
+	appLister    listers.AppLister
+	informerFactory  dynamicinformer.DynamicSharedInformerFactory // Shared informer factory for App resources
+	informer         cache.SharedIndexInformer                    // Informer for App resources
 	logger           *zap.SugaredLogger
 	mu               sync.Mutex
 	numWorkers       int
@@ -94,7 +94,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		dynClient:       dynClient,
 		syncInterval:    syncInterval,
 		lastSyncTime:    time.Now().Add(-syncInterval), // Initialize to allow immediate first run
-		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "services"),
+		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "apps"),
 		informerFactory: dynamicinformer.NewDynamicSharedInformerFactory(dynClient, syncInterval),
 		logger:          sugar,
 		numWorkers:      0,
@@ -142,7 +142,7 @@ func (c *Controller) initInformer() {
 	gvr := schema.GroupVersionResource{
 		Group:    "alustan.io",
 		Version:  "v1alpha1",
-		Resource: "services",
+		Resource: "apps",
 	}
 
 	// Get the informer and error returned by ForResource
@@ -150,13 +150,13 @@ func (c *Controller) initInformer() {
 	c.informer = informer.Informer()
 
 	// Set the lister for the custom resource
-	c.serviceLister = listers.NewServiceLister(c.informer.GetIndexer())
+	c.appLister = listers.NewAppLister(c.informer.GetIndexer())
 
 	// Add event handlers to the informer
 	c.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.handleAddService,
-		UpdateFunc: c.handleUpdateService,
-		DeleteFunc: c.handleDeleteService,
+		AddFunc:    c.handleAddApp,
+		UpdateFunc: c.handleUpdateApp,
+		DeleteFunc: c.handleDeleteApp,
 	})
 }
 
@@ -176,7 +176,7 @@ func (c *Controller) setupInformer(stopCh <-chan struct{}) {
 	}
 }
 
-func (c *Controller) handleAddService(obj interface{}) {
+func (c *Controller) handleAddApp(obj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		c.logger.Errorf("couldn't get key for object %+v: %v", obj, err)
@@ -185,7 +185,7 @@ func (c *Controller) handleAddService(obj interface{}) {
 	c.enqueue(key)
 }
 
-func (c *Controller) handleUpdateService(old, new interface{}) {
+func (c *Controller) handleUpdateApp(old, new interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(new)
 	if err != nil {
 		c.logger.Errorf("couldn't get key for object %+v: %v", new, err)
@@ -194,7 +194,7 @@ func (c *Controller) handleUpdateService(old, new interface{}) {
 	c.enqueue(key)
 }
 
-func (c *Controller) handleDeleteService(obj interface{}) {
+func (c *Controller) handleDeleteApp(obj interface{}) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
 		c.logger.Errorf("couldn't get key for object %+v: %v", obj, err)
@@ -212,7 +212,7 @@ func (c *Controller) enqueue(key string) {
 func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 	defer c.logger.Sync()
 
-	c.logger.Info("Starting Service controller")
+	c.logger.Info("Starting App controller")
 
 	// Setup informers and listers
 	c.setupInformer(stopCh)
@@ -222,7 +222,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 	rl, err := resourcelock.New(
 		resourcelock.LeasesResourceLock,
 		"alustan",
-		"service-controller-lock",
+		"app-controller-lock",
 		c.Clientset.CoreV1(),
 		c.Clientset.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
@@ -347,7 +347,7 @@ func (c *Controller) processNextWorkItem() bool {
 		}
 
 		// Get the actual resource using the lister
-		serviceObject, err := c.serviceLister.Service(namespace).Get(name)
+		appObject, err := c.appLister.App(namespace).Get(name)
 		if err != nil {
 		    // Check if the error message contains "not found"
 			if strings.Contains(err.Error(), "not found") {
@@ -370,33 +370,33 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 		}
 
-		serviceObj := serviceObject.DeepCopyObject()
+		appObj := appObject.DeepCopyObject()
 
-		// Convert to *v1alpha1.Service
-		unstructuredObj, ok := serviceObj.(*unstructured.Unstructured)
+		// Convert to *v1alpha1.App
+		unstructuredObj, ok := appObj.(*unstructured.Unstructured)
 		if !ok {
 			c.workqueue.Forget(obj)
-			c.logger.Errorf("expected *unstructured.Unstructured but got %T", serviceObj)
+			c.logger.Errorf("expected *unstructured.Unstructured but got %T", appObj)
 			return nil
 		}
-		service := &v1alpha1.Service{}
-		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, service)
+		app := &v1alpha1.App{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, app)
 		if err != nil {
 			c.workqueue.Forget(obj)
-			c.logger.Errorf("error converting unstructured object to *v1alpha1.Service: %v", err)
+			c.logger.Errorf("error converting unstructured object to *v1alpha1.App: %v", err)
 			return nil
 		}
 
 		// Retrieve generation information from status
-		generation := service.GetGeneration()
-		observedGeneration := service.Status.ObservedGeneration
+		generation := app.GetGeneration()
+		observedGeneration := app.Status.ObservedGeneration
 
 		// Convert generation to int if necessary
 		gen := int(generation)
 
 		if gen > observedGeneration {
 			// Perform synchronization and update observed generation
-			finalStatus, err := c.handleSyncRequest(c.argoClient,service)
+			finalStatus, err := c.handleSyncRequest(c.argoClient,app)
 			if finalStatus.Message == "Destroy completed successfully" {
                return nil
 			}
@@ -409,7 +409,7 @@ func (c *Controller) processNextWorkItem() bool {
 			}
 
 			finalStatus.ObservedGeneration = gen
-			updateErr := c.updateStatus(service, finalStatus)
+			updateErr := c.updateStatus(app, finalStatus)
 			if updateErr != nil {
 				c.logger.Infof("Failed to update status for %s: %v", key, updateErr)
 				c.workqueue.AddRateLimited(key)
@@ -429,7 +429,7 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleSyncRequest(argoClient apiclient.Client,observed *v1alpha1.Service) (v1alpha1.ServiceStatus, error) {
+func (c *Controller) handleSyncRequest(argoClient apiclient.Client,observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
      
 	 secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
 	 key := "pat"
@@ -438,7 +438,7 @@ func (c *Controller) handleSyncRequest(argoClient apiclient.Client,observed *v1a
 	 c.logger.Infof("Observed Parent Spec: %+v", observed.Spec)
 	 
  
-	 commonStatus := v1alpha1.ServiceStatus{
+	 commonStatus := v1alpha1.AppStatus{
 		 State:   "Progressing",
 		 Message: "Starting processing",
 	 }
@@ -486,7 +486,7 @@ func isEmptyApplicationSetStatus(status appv1alpha1.ApplicationSetStatus) bool {
     return len(status.Conditions) == 0
 }
  
-func mergeStatuses(baseStatus, newStatus v1alpha1.ServiceStatus) v1alpha1.ServiceStatus {
+func mergeStatuses(baseStatus, newStatus v1alpha1.AppStatus) v1alpha1.AppStatus {
     if newStatus.State != "" {
         baseStatus.State = newStatus.State
     }
@@ -506,7 +506,7 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.ServiceStatus) v1alpha1.Servic
 }
 
 
-func (c *Controller) updateStatus(observed *v1alpha1.Service, status v1alpha1.ServiceStatus) error {
+func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppStatus) error {
 	err := Kubernetespkg.UpdateStatus(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace, status)
 	
 	if err != nil {

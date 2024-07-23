@@ -26,11 +26,10 @@ Use this manifest that references a basic setup
 **Terraform controller**
 
 ```yaml
-
 apiVersion: alustan.io/v1alpha1
 kind: Terraform
 metadata:
-  name: dummy-example
+  name: dummy
 spec:
   variables:
     TF_VAR_workspace: "default"
@@ -48,19 +47,19 @@ spec:
       region: TF_VAR_region
   containerRegistry:
     provider: docker
-    imageName: alustan/example #build your own image from this repo alustan/basic-example since the 
+    imageName: alustan/example  #build your own image from this repo alustan/basic-example since the 
                                # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
     semanticVersion: ">=0.2.0"
 
 ```
 
-**Service controller**
+**App controller**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 metadata:
-  name: api-service
+  name: web-service
 spec:
   workspace: default
   source:
@@ -71,15 +70,15 @@ spec:
     values:
       cluster: ${workspace.CLUSTER_NAME}
       service: frontend
-      image: alustan/basic-web:0.2.0
+      image: alustan/web-app-demo:1.0.0
       config:
         DUMMY_1: ${workspace.dummy_output_1}
         DUMMY_2: ${workspace.dummy_output_2}
 
   containerRegistry:
     provider: docker
-    imageName: alustan/basic-web
-    semanticVersion: ">=0.1.0"
+    imageName: alustan/web-app-demo
+    semanticVersion: ">=1.0.0"
 
 ```
 

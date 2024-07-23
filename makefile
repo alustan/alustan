@@ -3,7 +3,7 @@ GO := go
 
 # Directories
 INFRA_SRC_DIR := ./cmd/terraform-controller
-SERVICE_SRC_DIR := ./cmd/service-controller
+APP_SRC_DIR := ./cmd/app-controller
 TEST_DIR := ./test
 
 # Targets
@@ -16,18 +16,18 @@ generate-infra-crds:
 	@go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
 	@$(shell go env GOPATH)/bin/controller-gen crd paths="./api/infrastructure/..." output:crd:stdout > ./api/infrastructure/v1alpha1/crd.yaml
 
-generate-service-crds:
+generate-app-crds:
 	@echo "+ Generating crds"
 	@go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
-	@$(shell go env GOPATH)/bin/controller-gen crd paths="./api/service/..." output:crd:stdout > ./api/service/v1alpha1/crd.yaml
+	@$(shell go env GOPATH)/bin/controller-gen crd paths="./api/app/..." output:crd:stdout > ./api/app/v1alpha1/crd.yaml
 
 
 ## Build the application
 build-infra:
 	$(GO) build -o bin/terraform-controller $(INFRA_SRC_DIR)
 
-build-service:
-	$(GO) build -o bin/service-controller $(SERVICE_SRC_DIR)
+build-app:
+	$(GO) build -o bin/app-controller $(APP_SRC_DIR)
 
 ## Run tests
 test:
@@ -50,11 +50,11 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  build-infra          Builds the infra controller binary"
-	@echo "  build-service          Builds the service controller binary"
+	@echo "  build-app          Builds the app controller binary"
 	@echo "  test           Run tests"
 	@echo "  lint           Run linting"
 	@echo "  clean          Clean build artifacts"
 	@echo "  setup          setup script before build"
 	@echo "  generate-infra-crds  Generates infrastructure crds from struct"
-	@echo "  generate-service-crds  Generates service crds from struct"
+	@echo "  generate-app-crds  Generates app crds from struct"
 	@echo "  help           Display this help message"

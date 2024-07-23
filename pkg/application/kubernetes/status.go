@@ -14,19 +14,19 @@ import (
     "k8s.io/apimachinery/pkg/api/errors"
     "go.uber.org/zap"
 
-    "github.com/alustan/alustan/api/service/v1alpha1"
+    "github.com/alustan/alustan/api/app/v1alpha1"
 )
 
-func UpdateStatus(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, name, namespace string, status v1alpha1.ServiceStatus) error {
+func UpdateStatus(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, name, namespace string, status v1alpha1.AppStatus) error {
     gvr := schema.GroupVersionResource{
         Group:    "alustan.io",
         Version:  "v1alpha1",
-        Resource: "services",
+        Resource: "apps",
     }
 
     retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
         // Get the existing resource
-        unstructuredService, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.Background(), name, metav1.GetOptions{})
+        unstructuredApp, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.Background(), name, metav1.GetOptions{})
         if err != nil {
             if errors.IsNotFound(err) {
                 logger.Infof("Resource %s in namespace %s does not exist, assuming it has been deleted", name, namespace)
@@ -35,20 +35,20 @@ func UpdateStatus(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, na
             return err
         }
 
-        // Convert unstructured data to Service
-        service := &v1alpha1.Service{}
-        err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredService.Object, service)
+        // Convert unstructured data to App
+        app := &v1alpha1.App{}
+        err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredApp.Object, app)
         if err != nil {
-            return fmt.Errorf("failed to convert unstructured data to Service: %v", err)
+            return fmt.Errorf("failed to convert unstructured data to App: %v", err)
         }
 
         // Update the status
-        service.Status = status
+        app.Status = status
 
         // Convert back to unstructured data
-        updatedUnstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(service)
+        updatedUnstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(app)
         if err != nil {
-            return fmt.Errorf("failed to convert Service to unstructured data: %v", err)
+            return fmt.Errorf("failed to convert App to unstructured data: %v", err)
         }
         updatedUnstructured := &unstructured.Unstructured{Object: updatedUnstructuredMap}
 

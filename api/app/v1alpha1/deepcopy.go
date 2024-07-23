@@ -4,17 +4,17 @@ import "k8s.io/apimachinery/pkg/runtime"
 
 // DeepCopyInto copies all properties of this object into another object of the
 // same type that is provided as a pointer.
-func (in *Service) DeepCopyInto(out *Service) {
+func (in *App) DeepCopyInto(out *App) {
 	out.TypeMeta = in.TypeMeta
 	out.ObjectMeta = in.ObjectMeta
-	out.Spec = ServiceSpec{
+	out.Spec = AppSpec{
 		Workspace:         in.Spec.Workspace,
 		PreviewEnvironment:   in.Spec.PreviewEnvironment,
 		Source:            in.Spec.Source,
 		ContainerRegistry: in.Spec.ContainerRegistry,
 		Dependencies:      in.Spec.Dependencies,
 	}
-	out.Status = ServiceStatus{
+	out.Status = AppStatus{
 		State:             in.Status.State,
 		Message:           in.Status.Message,
 		HealthStatus:      in.Status.HealthStatus,
@@ -27,21 +27,21 @@ func (in *Service) DeepCopyInto(out *Service) {
 
 
 // DeepCopyObject returns a generically typed copy of an object
-func (in *Service) DeepCopyObject() runtime.Object {
-	out := Service{}
+func (in *App) DeepCopyObject() runtime.Object {
+	out := App{}
 	in.DeepCopyInto(&out)
 
 	return &out
 }
 
 // DeepCopyObject returns a generically typed copy of an object
-func (in *ServiceList) DeepCopyObject() runtime.Object {
-	out := ServiceList{}
+func (in *AppList) DeepCopyObject() runtime.Object {
+	out := AppList{}
 	out.TypeMeta = in.TypeMeta
 	out.ListMeta = in.ListMeta
 
 	if in.Items != nil {
-		out.Items = make([]Service, len(in.Items)) 
+		out.Items = make([]App, len(in.Items)) 
 		for i := range in.Items {
 			in.Items[i].DeepCopyInto(&out.Items[i])
 		}

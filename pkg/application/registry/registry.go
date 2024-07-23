@@ -15,7 +15,7 @@ import (
 	"github.com/alustan/alustan/pkg/imagetag"
 	
 	containers "github.com/alustan/alustan/pkg/containers"
-	"github.com/alustan/alustan/api/service/v1alpha1"
+	"github.com/alustan/alustan/api/app/v1alpha1"
 	"github.com/alustan/alustan/pkg/application/errorstatus"
 	
 )
@@ -25,10 +25,10 @@ import (
 func HandleContainerRegistry(
 	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
-	observed *v1alpha1.Service,
+	observed *v1alpha1.App,
 	
-) (string, v1alpha1.ServiceStatus) {
-	var status v1alpha1.ServiceStatus
+) (string, v1alpha1.AppStatus) {
+	var status v1alpha1.AppStatus
 
 	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
 	if encodedDockerConfigJSON == "" {

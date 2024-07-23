@@ -10,8 +10,8 @@ import (
 
 // +groupName=alustan.io
 
-// ServiceSpec defines the desired state of Service
-type ServiceSpec struct {
+// AppSpec defines the desired state of App
+type AppSpec struct {
     Workspace          string             `json:"workspace"`
     PreviewEnvironment   PreviewEnvironment    `json:"previewEnvironment"` 
     Source           SourceSpec         `json:"source"`
@@ -41,14 +41,14 @@ type ContainerRegistry struct {
     SemanticVersion string `json:"semanticVersion"`
 }
 
-// Dependencies defines the service dependencies
+// Dependencies defines the App dependencies
 type Dependencies struct {
     Service []map[string]string `json:"service"`
 }
 
 
-// ServiceStatus defines the observed state of Service
-type ServiceStatus struct {
+// AppStatus defines the observed state of App
+type AppStatus struct {
     State    string    `json:"state"`
 	Message   string    `json:"message,omitempty"`
     HealthStatus   appv1alpha1.ApplicationSetStatus     `json:"healthStatus,omitempty"`
@@ -58,25 +58,25 @@ type ServiceStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=services,scope=Namespaced
+// +kubebuilder:resource:path=apps,scope=Namespaced
 
-// Service is the Schema for the services API
-type Service struct {
+// App is the Schema for the apps API
+type App struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
 
-    Spec   ServiceSpec   `json:"spec,omitempty"`
-    Status ServiceStatus `json:"status,omitempty"`
+    Spec   AppSpec   `json:"spec,omitempty"`
+    Status AppStatus `json:"status,omitempty"`
 }
 
 
 // +kubebuilder:object:root=true
 
-// ServiceList contains a list of Service
-type ServiceList struct {
+// AppList contains a list of App
+type AppList struct {
     metav1.TypeMeta `json:",inline"`
     metav1.ListMeta `json:"metadata,omitempty"`
-    Items           []Service `json:"items"`
+    Items           []App `json:"items"`
 }
 
 

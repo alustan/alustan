@@ -9,21 +9,21 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-type ServiceLister interface {
+type AppLister interface {
 	List(selector labels.Selector) ([]runtime.Object, error)
 	GetByKey(key string) (runtime.Object, error)
-	Service(namespace string) ServiceNamespaceLister
+	App(namespace string) AppNamespaceLister
 }
 
-type serviceLister struct {
+type appLister struct {
 	indexer cache.Indexer
 }
 
-func NewServiceLister(indexer cache.Indexer) ServiceLister {
-	return &serviceLister{indexer: indexer}
+func NewAppLister(indexer cache.Indexer) AppLister {
+	return &appLister{indexer: indexer}
 }
 
-func (l *serviceLister) List(selector labels.Selector) ([]runtime.Object, error) {
+func (l *appLister) List(selector labels.Selector) ([]runtime.Object, error) {
 	var ret []runtime.Object
 	err := cache.ListAll(l.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(runtime.Object))
@@ -34,35 +34,35 @@ func (l *serviceLister) List(selector labels.Selector) ([]runtime.Object, error)
 	return ret, nil
 }
 
-func (l *serviceLister) GetByKey(key string) (runtime.Object, error) {
+func (l *appLister) GetByKey(key string) (runtime.Object, error) {
 	obj, exists, err := l.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.New("service resource not found")
+		return nil, errors.New("app resource not found")
 	}
 	return obj.(runtime.Object), nil
 }
 
-func (l *serviceLister) Service(namespace string) ServiceNamespaceLister {
-	return &serviceNamespaceLister{
+func (l *appLister) App(namespace string) AppNamespaceLister {
+	return &appNamespaceLister{
 		indexer:   l.indexer,
 		namespace: namespace,
 	}
 }
 
-type ServiceNamespaceLister interface {
+type AppNamespaceLister interface {
 	List(selector labels.Selector) ([]runtime.Object, error)
 	Get(name string) (runtime.Object, error)
 }
 
-type serviceNamespaceLister struct {
+type appNamespaceLister struct {
 	indexer   cache.Indexer
 	namespace string
 }
 
-func (l *serviceNamespaceLister) List(selector labels.Selector) ([]runtime.Object, error) {
+func (l *appNamespaceLister) List(selector labels.Selector) ([]runtime.Object, error) {
 	var ret []runtime.Object
 	err := cache.ListAllByNamespace(l.indexer, l.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(runtime.Object))
@@ -73,14 +73,14 @@ func (l *serviceNamespaceLister) List(selector labels.Selector) ([]runtime.Objec
 	return ret, nil
 }
 
-func (l *serviceNamespaceLister) Get(name string) (runtime.Object, error) {
+func (l *appNamespaceLister) Get(name string) (runtime.Object, error) {
 	key := l.namespace + "/" + name
 	obj, exists, err := l.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.New("service resource not found")
+		return nil, errors.New("app resource not found")
 	}
 	return obj.(runtime.Object), nil
 }

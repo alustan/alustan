@@ -34,7 +34,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           yq --inplace ".infrastructure.image.tag = \"${VERSION}\"" ./helm/alustan-helm/values.yaml
-          yq --inplace ".service.image.tag = \"${VERSION}\"" ./helm/alustan-helm/values.yaml
+          yq --inplace ".app.image.tag = \"${VERSION}\"" ./helm/alustan-helm/values.yaml
           
 
       - name: Save and publish Helm chart to Docker registry
