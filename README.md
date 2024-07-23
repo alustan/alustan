@@ -4,15 +4,15 @@
 
 ## Design 
 
- **Service-controller**
+ **App-controller**
 
-- The `Service controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
+- The `App controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
 
 > should have a labelkey `environment` and a value which is same as that specified in the **workspace field**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 spec:
   workspace: staging
 ```
@@ -24,7 +24,7 @@ spec:
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 spec:
   dependencies:
     service: 
@@ -36,12 +36,12 @@ spec:
 
 - Each service is deployed in the specified `cluster`. therefore `cluster Name` should be provided.
 
-The `service-controller` expects the cluster be specified in your helm chart
+The `app-controller` expects the cluster be specified in your helm chart
 **For example this extracts cluster name from a key `CLUSTER_NAME` stored in cluster secret**
 >
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 spec:
   source:
     values:
@@ -55,7 +55,7 @@ spec:
 > 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 values:
   config:
     DB_URL: postgresql://${workspace.DB_USER}:${workspace.DB_PASSWORD}@postgres:5432/${workspace.DB_NAME}
@@ -70,7 +70,7 @@ values:
 > 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 spec:
   previewEnvironment:
     enabled: true
@@ -92,7 +92,7 @@ spec:
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 spec:
   containerRegistry:
     provider: docker
@@ -269,11 +269,11 @@ spec:
  
 ```
 
-- **Service**
+- **App**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 metadata:
   name: api-service
 spec:
@@ -297,7 +297,7 @@ spec:
 
 ---
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 metadata:
   name: web-service
 spec:

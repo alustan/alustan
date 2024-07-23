@@ -6,7 +6,7 @@
 
 ---
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 metadata:
   name: api-service
 spec:
@@ -30,7 +30,7 @@ spec:
 
 ---
 apiVersion: alustan.io/v1alpha1
-kind: Service
+kind: App
 metadata:
   name: web-service
 spec:

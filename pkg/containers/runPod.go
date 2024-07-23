@@ -13,9 +13,9 @@ import (
 )
 
 // CreateOrUpdateRunPod creates or updates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateOrUpdateRunPod(logger *zap.SugaredLogger, clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, service string) (string, error) {
-	identifier := fmt.Sprintf("%s-%s", name, service)
-	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, service)
+func CreateOrUpdateRunPod(logger *zap.SugaredLogger, clientset kubernetes.Interface, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName, app string) (string, error) {
+	identifier := fmt.Sprintf("%s-%s", name, app)
+	podName := fmt.Sprintf("%s-%s-docker-run-pod", name, app)
 
 	saIdentifier, saError := CreateOrUpdateServiceAccountAndRoles(logger, clientset, name, namespace)
 	if saError != nil {

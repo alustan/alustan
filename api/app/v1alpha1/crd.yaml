@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
-  name: services.alustan.io
+  name: apps.alustan.io
 spec:
   group: alustan.io
   names:
-    kind: Service
-    listKind: ServiceList
-    plural: services
-    singular: service
+    kind: App
+    listKind: AppList
+    plural: apps
+    singular: app
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Service is the Schema for the services API
+        description: App is the Schema for the apps API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ServiceSpec defines the desired state of Service
+            description: AppSpec defines the desired state of App
             properties:
               containerRegistry:
                 description: ContainerRegistry defines the container registry information
@@ -54,7 +54,7 @@ spec:
                 - semanticVersion
                 type: object
               dependencies:
-                description: Dependencies defines the service dependencies
+                description: Dependencies defines the App dependencies
                 properties:
                   service:
                     items:
@@ -111,7 +111,7 @@ spec:
             - workspace
             type: object
           status:
-            description: ServiceStatus defines the observed state of Service
+            description: AppStatus defines the observed state of App
             properties:
               healthStatus:
                 description: ApplicationSetStatus defines the observed state of ApplicationSet

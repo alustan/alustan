@@ -15,7 +15,7 @@ const (
 // or returns the default values.
 func GetSyncIntervals() (time.Duration, time.Duration) {
 	infraSyncInterval := getEnvSyncInterval("INFRA_SYNC_INTERVAL", defaultSyncInterval)
-	appSyncInterval := getEnvSyncInterval("SERVICE_SYNC_INTERVAL", defaultAppSyncInterval)
+	appSyncInterval := getEnvSyncInterval("APP_SYNC_INTERVAL", defaultAppSyncInterval)
 
 	return infraSyncInterval, appSyncInterval
 }

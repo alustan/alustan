@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "terraform-controller-helm.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.service.replicaCount }}
+  replicas: {{ .Values.infrastructure.replicaCount }}
   selector:
     matchLabels:
       {{- include "terraform-controller-helm.selectorLabels" . | nindent 6 }}

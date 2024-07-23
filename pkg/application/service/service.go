@@ -23,7 +23,7 @@ import (
 
 	"github.com/alustan/alustan/pkg/application/errorstatus"
 	kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
-	"github.com/alustan/alustan/api/service/v1alpha1"
+	"github.com/alustan/alustan/api/app/v1alpha1"
   
     
  
@@ -35,12 +35,12 @@ func RunService(
     clientset kubernetes.Interface,
     dynamicClient dynamic.Interface,
     argoClient apiclient.Client,
-    observed *v1alpha1.Service,
+    observed *v1alpha1.App,
     secretName, key string,
     finalizing bool,
-) v1alpha1.ServiceStatus {
+) v1alpha1.AppStatus {
 
-    var status v1alpha1.ServiceStatus
+    var status v1alpha1.AppStatus
 
     if finalizing {
         logger.Info("Attempting to delete application")
@@ -48,9 +48,9 @@ func RunService(
         return status
     }
 
-    status = v1alpha1.ServiceStatus{
+    status = v1alpha1.AppStatus{
         State:   "Progressing",
-        Message: "Running Service",
+        Message: "Running App",
     }
 
    // Extract dependencies
@@ -69,7 +69,7 @@ func RunService(
     // Proceed with creating the ApplicationSet
     appStatus, err := CreateApplicationSet(logger, clientset, argoClient, observed, secretName, key)
     if err != nil {
-        return errorstatus.ErrorResponse(logger, "Running Service", err)
+        return errorstatus.ErrorResponse(logger, "Running App", err)
     }
 
     // Ensure appStatus is not nil before dereferencing
@@ -94,8 +94,8 @@ func RunService(
         return status
     }
 
-    // Preserve any existing status fields in the ServiceStatus struct
-    finalStatus := v1alpha1.ServiceStatus{
+    // Preserve any existing status fields in the AppStatus struct
+    finalStatus := v1alpha1.AppStatus{
         State:        "Completed",
         Message:      "Successfully applied",
         HealthStatus: *appStatus, // Dereference the pointer here
@@ -300,7 +300,7 @@ func CreateApplicationSet(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
     argoClient apiclient.Client,
-    observed *v1alpha1.Service,
+    observed *v1alpha1.App,
     secretName, key string,
 ) (*appv1alpha1.ApplicationSetStatus, error) {
 
@@ -491,7 +491,7 @@ fmt.Printf("Successfully applied ApplicationSet '%s' using ArgoCD\n", appSet.Nam
 return &appSet.Status, nil
 }
 
-func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, argoClient apiclient.Client, observed *v1alpha1.Service) (v1alpha1.ServiceStatus, error) {
+func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, argoClient apiclient.Client, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
 
 	appSetName := observed.ObjectMeta.Name
 
@@ -500,13 +500,13 @@ func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interf
 	// Check for dependent services
 	dependentServices, err := checkDependentServices(dynamicClient, observed)
 	if err != nil {
-		return v1alpha1.ServiceStatus{
+		return v1alpha1.AppStatus{
 			State:   "Failed",
 			Message: fmt.Sprintf("Error checking dependent services: %v", err),
 		}, err
 	}
 	if len(dependentServices) > 0 {
-		return v1alpha1.ServiceStatus{
+		return v1alpha1.AppStatus{
 			State:   "Blocked",
 			Message: "Service has dependent services, cannot delete",
 		}, nil
@@ -526,7 +526,7 @@ func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interf
 		return err
 	})
 	if err != nil {
-		return v1alpha1.ServiceStatus{
+		return v1alpha1.AppStatus{
 			State:   "Failed",
 			Message: fmt.Sprintf("Error deleting ApplicationSet: %v", err),
 		}, err
@@ -538,13 +538,13 @@ func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interf
 	err = kubernetespkg.RemoveFinalizer(logger, dynamicClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
 	if err != nil {
 		logger.Errorf("Failed to remove finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
-		return v1alpha1.ServiceStatus{
+		return v1alpha1.AppStatus{
 			State:   "Error",
 			Message: fmt.Sprintf("Failed to remove finalizer: %v", err),
 		}, err
 	}
 
-	return v1alpha1.ServiceStatus{
+	return v1alpha1.AppStatus{
 		State:   "Completed",
 		Message: "Successfully deleted ApplicationSet",
 	}, nil
@@ -554,23 +554,23 @@ func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 
 // checkDependentServices checks if there are other services depending on the given service.
-func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.Service) ([]string, error) {
+func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.App) ([]string, error) {
     var dependentServices []string
-    services, err := dynamicClient.Resource(schema.GroupVersionResource{
+    apps, err := dynamicClient.Resource(schema.GroupVersionResource{
         Group:    "alustan.io",
         Version:  "v1alpha1",
-        Resource: "services",
+        Resource: "apps",
     }).Namespace(observed.Namespace).List(context.TODO(), metav1.ListOptions{})
     if err != nil {
         return nil, err
     }
 
-    for _, svc := range services.Items {
-        serviceSpec, ok := svc.Object["spec"].(map[string]interface{})
+    for _, svc := range apps.Items {
+        appSpec, ok := svc.Object["spec"].(map[string]interface{})
         if !ok {
             continue
         }
-        dependencies, exists := serviceSpec["dependencies"].(map[string]interface{})
+        dependencies, exists := appSpec["dependencies"].(map[string]interface{})
         if exists {
             for depType, depList := range dependencies {
                 if depType == "service" {
@@ -621,7 +621,7 @@ func CheckApplicationSetHealth(logger *zap.SugaredLogger, argoClient apiclient.C
 
 
 
-func ExtractDependencies(observed *v1alpha1.Service) []string {
+func ExtractDependencies(observed *v1alpha1.App) []string {
     if observed.Spec.Dependencies.Service == nil {
         return nil
     }

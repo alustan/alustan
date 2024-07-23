@@ -18,24 +18,24 @@ func AddFinalizer(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, na
 	gvr := schema.GroupVersionResource{
 		Group:    "alustan.io",
 		Version:  "v1alpha1",
-		Resource: "services",
+		Resource: "apps",
 	}
 
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Get the existing resource
 		unstructuredObj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get Service resource: %v", err)
+			return fmt.Errorf("failed to get App resource: %v", err)
 		}
 
 		// Convert unstructured object to map[string]interface{}
 		objMap := unstructuredObj.Object
 
 		// Check if finalizer is already present
-		finalizerName := "service.finalizer.alustan.io"
+		finalizerName := "app.finalizer.alustan.io"
 		finalizers, _, _ := unstructured.NestedStringSlice(objMap, "metadata", "finalizers")
 		if util.ContainsString(finalizers, finalizerName) {
-			logger.Infof("Finalizer %s already exists for Service %s in namespace %s", finalizerName, name, namespace)
+			logger.Infof("Finalizer %s already exists for App %s in namespace %s", finalizerName, name, namespace)
 			return nil
 		}
 
@@ -50,15 +50,15 @@ func AddFinalizer(logger *zap.SugaredLogger, dynamicClient dynamic.Interface, na
 		unstructuredObj.Object = objMap
 		_, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), unstructuredObj, metav1.UpdateOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to update Service resource: %v", err)
+			return fmt.Errorf("failed to update App resource: %v", err)
 		}
 
-		logger.Infof("Added finalizer %s for Service %s in namespace %s", finalizerName, name, namespace)
+		logger.Infof("Added finalizer %s for App %s in namespace %s", finalizerName, name, namespace)
 		return nil
 	})
 
 	if retryErr != nil {
-		logger.Errorf("Failed to add finalizer for Service %s in namespace %s: %v", name, namespace, retryErr)
+		logger.Errorf("Failed to add finalizer for App %s in namespace %s: %v", name, namespace, retryErr)
 		return retryErr
 	}
 
@@ -70,24 +70,24 @@ func RemoveFinalizer(logger *zap.SugaredLogger, dynamicClient dynamic.Interface,
 	gvr := schema.GroupVersionResource{
 		Group:    "alustan.io",
 		Version:  "v1alpha1",
-		Resource: "services",
+		Resource: "apps",
 	}
 
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Get the existing resource
 		unstructuredObj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get Service resource: %v", err)
+			return fmt.Errorf("failed to get App resource: %v", err)
 		}
 
 		// Convert unstructured object to map[string]interface{}
 		objMap := unstructuredObj.Object
 
 		// Check if finalizer is present
-		finalizerName := "service.finalizer.alustan.io"
+		finalizerName := "app.finalizer.alustan.io"
 		finalizers, _, _ := unstructured.NestedStringSlice(objMap, "metadata", "finalizers")
 		if !util.ContainsString(finalizers, finalizerName) {
-			logger.Infof("Finalizer %s not found for Service %s in namespace %s", finalizerName, name, namespace)
+			logger.Infof("Finalizer %s not found for App %s in namespace %s", finalizerName, name, namespace)
 			return nil
 		}
 
@@ -102,15 +102,15 @@ func RemoveFinalizer(logger *zap.SugaredLogger, dynamicClient dynamic.Interface,
 		unstructuredObj.Object = objMap
 		_, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), unstructuredObj, metav1.UpdateOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to update Service resource: %v", err)
+			return fmt.Errorf("failed to update App resource: %v", err)
 		}
 
-		logger.Infof("Removed finalizer %s for Service %s in namespace %s", finalizerName, name, namespace)
+		logger.Infof("Removed finalizer %s for App %s in namespace %s", finalizerName, name, namespace)
 		return nil
 	})
 
 	if retryErr != nil {
-		logger.Errorf("Failed to remove finalizer for Service %s in namespace %s: %v", name, namespace, retryErr)
+		logger.Errorf("Failed to remove finalizer for App %s in namespace %s: %v", name, namespace, retryErr)
 		return retryErr
 	}
 

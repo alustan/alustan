@@ -1,5 +1,5 @@
 ---
-name: Service Controller CI
+name: App Controller CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - 'v*.*.*'  # Trigger the workflow on version tags
 
 jobs:
-  build-service-controller:
+  build-app-controller:
     name: Build controller Image
     runs-on: ubuntu-latest
 
@@ -47,7 +47,7 @@ jobs:
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: alustan/service-controller
+          images: alustan/app-controller
           flavor: |
             latest=false
           tags: |
@@ -58,7 +58,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/service/Dockerfile
+          file: docker/app/Dockerfile
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}

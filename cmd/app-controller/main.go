@@ -13,7 +13,7 @@ import (
 
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/application/controller"
-	"github.com/alustan/alustan/api/service/v1alpha1"
+	"github.com/alustan/alustan/api/app/v1alpha1"
 )
 
 // Variables to be set by ldflags
@@ -37,14 +37,14 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 
 	
-	_, serviceSyncInterval := util.GetSyncIntervals()
-	log.Printf("Sync interval is set to %v", serviceSyncInterval)
+	_, appSyncInterval := util.GetSyncIntervals()
+	log.Printf("Sync interval is set to %v", appSyncInterval)
 
 	// Create a stop channel
 	stopCh := make(chan struct{})
 
 	// Create a controller
-	ctrl := controller.NewInClusterController(serviceSyncInterval)
+	ctrl := controller.NewInClusterController(appSyncInterval)
 
 	// Start the reconciliation loop 
 	 ctrl.RunLeader(stopCh)

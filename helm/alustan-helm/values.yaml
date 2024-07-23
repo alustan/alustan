@@ -34,12 +34,12 @@ infrastructure:
   service:
     type: ClusterIP
     port: 8080
-# Service specific values file
-service:
+# App specific values file
+app:
   replicaCount: 1
   image:
     pullPolicy: IfNotPresent
-    repository: alustan/service-controller
+    repository: alustan/app-controller
     # Overrides the image tag whose default is the chart appVersion.
     tag: "1.0.0"
   syncInterval: ""

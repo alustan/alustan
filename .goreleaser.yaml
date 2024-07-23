@@ -9,9 +9,9 @@ before:
     - make setup
 
 builds:
-  - id: service_controller_build
+  - id: app_controller_build
     binary: app-controller
-    main: ./cmd/service-controller/main.go
+    main: ./cmd/app-controller/main.go
     env:
       - CGO_ENABLED=0
     goos:
@@ -68,7 +68,7 @@ release:
 
     - `docker.io/alustan/terraform-controller:v{{ .Version }}`
 
-    - `docker.io/alustan/service-controller:v{{ .Version }}`
+    - `docker.io/alustan/app-controller:v{{ .Version }}`
 
     ## Helm chart
 
