@@ -61,7 +61,7 @@ var setupOnce sync.Once
 
 func setupArgoCD(sugar *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface) {
 	setupOnce.Do(func() {
-		argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "6.6.0")
+		argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "7.3.11")
 		if argoerr != nil {
 			sugar.Fatal(argoerr.Error())
 		}
