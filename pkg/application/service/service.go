@@ -7,6 +7,7 @@ import (
 	"time"
 	"encoding/json"
 
+    "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
@@ -106,6 +107,7 @@ func RunService(
 }
 
 
+
 func fetchSecretAnnotations(
     clientset kubernetes.Interface, 
     secretTypeLabel, secretTypeValue, environmentLabel, environmentValue string,
@@ -134,134 +136,95 @@ func fetchSecretAnnotations(
     return matchedSecret.Annotations, nil
 }
 
+// replaceWorkspaceValues replaces placeholders in the values map with corresponding values from the output map
+func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
+    var clusterValue string
+    modifiedValues := make(map[string]interface{})
 
-func replaceWorkspaceValues(values map[string]interface{}, output map[string]string, preview bool, prefix string) (string, string) {
-	var builder strings.Builder
-	var clusterValue string
+    for key, value := range values {
+        switch v := value.(type) {
+        case string:
+            replacedValue := replacePlaceholder(v, output)
+            modifiedValues[key] = replacedValue
+            if key == "cluster" {
+                clusterValue = replacedValue
+            }
+        case map[string]interface{}:
+            nestedValues, nestedClusterValue := replaceWorkspaceValues(v, output)
+            modifiedValues[key] = nestedValues
+            if nestedClusterValue != "" {
+                clusterValue = nestedClusterValue
+            }
+        default:
+            modifiedValues[key] = value
+        }
+    }
 
-    if len(values) == 0 {
-		return builder.String(), clusterValue
-	}
+    return modifiedValues, clusterValue
+}
 
-	// Check if the output map is empty
-	if len(output) == 0 {
-		// Handle the case where the output map is empty
-		// Returning the values as they are since there are no replacements
-		for key, value := range values {
-			switch v := value.(type) {
-			case string:
-				fmt.Fprintf(&builder, "%s: %s\n", key, v)
-				if key == "cluster" {
-					clusterValue = v
-				}
-			case map[string]interface{}:
-				if key == "ingress" {
-					ingressMap := v
-					for ingressKey, ingressValue := range ingressMap {
-						switch iv := ingressValue.(type) {
-						case []interface{}:
-							if ingressKey == "hosts" {
-								var updatedHosts []interface{}
-								for _, host := range iv {
-									hostStr, ok := host.(string)
-									if ok && preview {
-										hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
-									}
-									updatedHosts = append(updatedHosts, hostStr)
-								}
-								ingressMap[ingressKey] = updatedHosts
-							} else if ingressKey == "tls" {
-								for _, tlsItem := range iv {
-									tlsMap, ok := tlsItem.(map[string]interface{})
-									if ok {
-										if tlsHosts, exists := tlsMap["hosts"]; exists {
-											var updatedTlsHosts []interface{}
-											for _, tlsHost := range tlsHosts.([]interface{}) {
-												tlsHostStr, ok := tlsHost.(string)
-												if ok && preview {
-													tlsHostStr = fmt.Sprintf("%s-%s", prefix, tlsHostStr)
-												}
-												updatedTlsHosts = append(updatedTlsHosts, tlsHostStr)
-											}
-											tlsMap["hosts"] = updatedTlsHosts
-										}
-									}
-								}
-							}
-						}
-					}
-					v = ingressMap
-				}
+// modifyIngressHost modifies the host values in Ingress resources
+func modifyIngressHost(values map[string]interface{}, preview bool, prefix string) map[string]interface{} {
+    modifiedValues := make(map[string]interface{})
 
-				nestedOutput, nestedClusterValue := replaceWorkspaceValues(v, output, preview, prefix)
-				fmt.Fprintf(&builder, "%s:\n%s\n", key, indent(nestedOutput, "  "))
-				if nestedClusterValue != "" {
-					clusterValue = nestedClusterValue
-				}
-			default:
-				fmt.Fprintf(&builder, "%s: %v\n", key, value)
-			}
-		}
-		return builder.String(), clusterValue
-	}
+    for key, value := range values {
+        switch v := value.(type) {
+        case map[string]interface{}:
+            if key == "ingress" {
+                ingressMap := v
+                for ingressKey, ingressValue := range ingressMap {
+                    switch iv := ingressValue.(type) {
+                    case []interface{}:
+                        if ingressKey == "hosts" {
+                            var updatedHosts []interface{}
+                            for _, host := range iv {
+                                hostStr, ok := host.(string)
+                                if ok && preview {
+                                    hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
+                                }
+                                updatedHosts = append(updatedHosts, hostStr)
+                            }
+                            ingressMap[ingressKey] = updatedHosts
+                        } else if ingressKey == "tls" {
+                            for _, tlsItem := range iv {
+                                tlsMap, ok := tlsItem.(map[string]interface{})
+                                if ok {
+                                    if tlsHosts, exists := tlsMap["hosts"]; exists {
+                                        var updatedTlsHosts []interface{}
+                                        for _, tlsHost := range tlsHosts.([]interface{}) {
+                                            tlsHostStr, ok := tlsHost.(string)
+                                            if ok && preview {
+                                                tlsHostStr = fmt.Sprintf("%s-%s", prefix, tlsHostStr)
+                                            }
+                                            updatedTlsHosts = append(updatedTlsHosts, tlsHostStr)
+                                        }
+                                        tlsMap["hosts"] = updatedTlsHosts
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                modifiedValues[key] = ingressMap
+            } else {
+                modifiedValues[key] = modifyIngressHost(v, preview, prefix)
+            }
+        default:
+            modifiedValues[key] = value
+        }
+    }
 
-	for key, value := range values {
-		switch v := value.(type) {
-		case string:
-			replacedValue := replacePlaceholder(v, output)
-			fmt.Fprintf(&builder, "%s: %s\n", key, replacedValue)
-			if key == "cluster" {
-				clusterValue = replacedValue
-			}
-		case map[string]interface{}:
-			if key == "ingress" {
-				ingressMap := v
-				for ingressKey, ingressValue := range ingressMap {
-					switch iv := ingressValue.(type) {
-					case []interface{}:
-						if ingressKey == "hosts" {
-							var updatedHosts []interface{}
-							for _, host := range iv {
-								hostStr, ok := host.(string)
-								if ok && preview {
-									hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
-								}
-								updatedHosts = append(updatedHosts, hostStr)
-							}
-							ingressMap[ingressKey] = updatedHosts
-						} else if ingressKey == "tls" {
-							for _, tlsItem := range iv {
-								tlsMap, ok := tlsItem.(map[string]interface{})
-								if ok {
-									if tlsHosts, exists := tlsMap["hosts"]; exists {
-										var updatedTlsHosts []interface{}
-										for _, tlsHost := range tlsHosts.([]interface{}) {
-											tlsHostStr, ok := tlsHost.(string)
-											if ok && preview {
-												tlsHostStr = fmt.Sprintf("%s-%s", prefix, tlsHostStr)
-											}
-											updatedTlsHosts = append(updatedTlsHosts, tlsHostStr)
-										}
-										tlsMap["hosts"] = updatedTlsHosts
-									}
-								}
-							}
-						}
-					}
-				}
-				v = ingressMap
-			}
+    return modifiedValues
+}
 
-			nestedOutput, nestedClusterValue := replaceWorkspaceValues(v, output, preview, prefix)
-			fmt.Fprintf(&builder, "%s:\n%s\n", key, indent(nestedOutput, "  "))
-			if nestedClusterValue != "" {
-				clusterValue = nestedClusterValue
-			}
-		default:
-			fmt.Fprintf(&builder, "%s: %v\n", key, value)
-		}
-	}
-	return builder.String(), clusterValue
+// formatValuesAsHelmString converts a map of values to a Helm-compatible YAML string
+func formatValuesAsHelmString(logger *zap.SugaredLogger,values map[string]interface{}) string {
+    // Convert the map to YAML
+    yamlData, err := yaml.Marshal(values)
+    if err != nil {
+        logger.Fatalf("error: %v", err)
+    }
+    return string(yamlData)
 }
 
 
@@ -321,37 +284,48 @@ func CreateApplicationSet(
     targetRevision := observed.Spec.Source.TargetRevision
 
     
-    annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
-    if err != nil {
-        if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
-            // Return an empty ApplicationSet and log the error
-            logger.Warnf("No secret found with specified labels: %s", err.Error())
-            return nil, nil
-        }
-        logger.Error(err.Error())
-        return nil, err
-    }
-
-    // Convert RawExtension values to interface{}
-	convertedValues, err := convertRawExtensionsToInterface(values)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert values: %v", err)
-	}
-
-  // Check if annotations is empty
-  if len(annotations) == 0 {
-    // Check if values contain placeholders like ${workspace.}
-    if containsPlaceholders(convertedValues, "${workspace.") {
-        logger.Error("No annotations found and values contain placeholders")
-        return nil, nil
-    } else {
-        logger.Warn("No annotations found, but no placeholders in values, continuing execution")
-    }
-}
-
-
-	modifiedValues, cluster := replaceWorkspaceValues(convertedValues, annotations, preview, "preview-{{.branch}}-{{.number}}")
-
+     // Convert RawExtension values to interface{}
+     convertedValues, err := convertRawExtensionsToInterface(values)
+     if err != nil {
+         return nil, fmt.Errorf("failed to convert values: %v", err)
+     }
+ 
+     var modifiedValues map[string]interface{}
+     var cluster string
+ 
+     // Check if values contain placeholders like ${workspace.}
+     if containsPlaceholders(convertedValues, "${workspace.") {
+         annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
+         if err != nil {
+             if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
+                 // Return an empty ApplicationSet and log the error
+                 logger.Warnf("No secret found with specified labels: %s", err.Error())
+                 return nil, nil
+             }
+             logger.Error(err.Error())
+             return nil, err
+         }
+ 
+         // Check if annotations are empty
+         if len(annotations) == 0 {
+             logger.Error("No annotations found and values contain placeholders")
+             return nil, nil
+         }
+ 
+         // Replace placeholders with values from annotations
+         modifiedValues, cluster = replaceWorkspaceValues(convertedValues, annotations)
+     } else {
+         logger.Info("No placeholders in values, continuing execution with default values")
+         modifiedValues = convertedValues
+     }
+ 
+     // Modify Ingress hosts if preview is true
+     if preview {
+         modifiedValues = modifyIngressHost(modifiedValues, preview, "preview-{{.branch}}-{{.number}}")
+     }
+ 
+     // Convert modifiedValues to Helm string format
+     helmValues := formatValuesAsHelmString(logger,modifiedValues)
     
     
    var generators []appv1alpha1.ApplicationSetGenerator
@@ -456,7 +430,7 @@ func CreateApplicationSet(
                         TargetRevision: targetRevision,
                         Helm: &appv1alpha1.ApplicationSourceHelm{
                             ReleaseName: releaseName,
-                            Values:      modifiedValues,
+                            Values:      helmValues,
                         },
                     },
                 },
