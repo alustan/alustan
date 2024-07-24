@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"sync"
 
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/action"
@@ -22,18 +23,36 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Global lock to prevent concurrent installations
+var installLock sync.Mutex
+
 func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface, version string) error {
 	// Get ArgoCD configuration from environment variable
 	argocdConfig := os.Getenv("ARGOCD_CONFIG")
 
 	// Check if ArgoCD is already installed and ready
-	installed, ready, err := isArgoCDInstalledAndReady(logger,clientset)
+	installed, ready, err := isArgoCDInstalledAndReady(logger, clientset)
 	if err != nil {
 		return fmt.Errorf("failed to check if ArgoCD is installed and ready: %w", err)
 	}
 
 	if installed && ready {
 		logger.Info("ArgoCD is already installed and ready")
+		return nil
+	}
+
+	// Lock to prevent concurrent installations
+	installLock.Lock()
+	defer installLock.Unlock()
+
+	// Check again if ArgoCD is still not ready after acquiring lock
+	installed, ready, err = isArgoCDInstalledAndReady(logger, clientset)
+	if err != nil {
+		return fmt.Errorf("failed to check if ArgoCD is installed and ready after acquiring lock: %w", err)
+	}
+
+	if installed && ready {
+		logger.Info("ArgoCD is already installed and ready after acquiring lock")
 		return nil
 	}
 
@@ -46,7 +65,6 @@ func InstallArgoCD(logger *zap.SugaredLogger, clientset kubernetes.Interface, dy
 	logger.Info("ArgoCD installed successfully")
 	return nil
 }
-
 
 func isArgoCDInstalledAndReady(logger *zap.SugaredLogger,clientset kubernetes.Interface) (bool, bool, error) {
 	_, err := clientset.CoreV1().Namespaces().Get(context.TODO(), "argocd", metav1.GetOptions{})
@@ -161,21 +179,33 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 		vals = defaultVals
 	}
 
-	// Check if the release already exists
-	histClient := action.NewHistory(actionConfig)
-	histClient.Max = 1
-	_, err = histClient.Run("argo-cd")
-	if err == nil {
-		// If the release exists, perform an upgrade with retry mechanism
-		return wait.ExponentialBackoff(retryBackoff(), func() (bool, error) {
-			return false, upgradeArgoCD(actionConfig, chart, vals, logger)
-		})
+	// Perform install or upgrade with exponential backoff retry mechanism
+	err = wait.ExponentialBackoff(RetryBackoff(), func() (bool, error) {
+		histClient := action.NewHistory(actionConfig)
+		histClient.Max = 1
+		_, err := histClient.Run("argo-cd")
+		if err == nil {
+			// If the release exists, perform an upgrade
+			err = upgradeArgoCD(actionConfig, chart, vals, logger)
+		} else {
+			// If the release does not exist, perform a new installation
+			err = installArgoCD(actionConfig, chart, vals, logger)
+		}
+
+		if err != nil {
+			
+			return false, err 
+		}
+
+		return true, nil // Stop retrying if successful
+	})
+
+
+	if err != nil {
+		return fmt.Errorf("failed to install/upgrade ArgoCD with Helm: %w", err)
 	}
 
-	// If the release does not exist, perform a new installation with retry mechanism
-	return wait.ExponentialBackoff(retryBackoff(), func() (bool, error) {
-		return false, installArgoCD(actionConfig, chart, vals, logger)
-	})
+	return nil
 }
 
 func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
@@ -223,10 +253,10 @@ func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 	return dst
 }
 
-func retryBackoff() wait.Backoff {
+func RetryBackoff() wait.Backoff {
 	return wait.Backoff{
 		Duration: 5 * time.Second, // Initial delay
 		Factor:   2,               // Exponential factor
-		Steps:    3,               // Number of retry attempts
+		Steps:    5,               // Number of retry attempts
 	}
 }
