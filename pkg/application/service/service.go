@@ -317,6 +317,21 @@ func CreateApplicationSet(
      } else {
          logger.Info("No placeholders in values, continuing execution with default values")
          modifiedValues = convertedValues
+
+           // Extract the value of the key 'cluster' from convertedValues
+        if clusterValue, exists := convertedValues["cluster"]; exists {
+            if clusterStr, ok := clusterValue.(string); ok {
+                cluster = clusterStr
+            } else {
+               
+             logger.Error("Cluster value is not a string")
+             return nil, nil
+            }
+        } else {
+             // Log and return if cluster value is not found
+             logger.Error("Cluster key not found in values")
+             return nil, nil
+        }
      }
  
      // Modify Ingress hosts if preview is true
