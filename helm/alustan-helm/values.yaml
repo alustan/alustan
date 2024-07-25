@@ -29,7 +29,7 @@ infrastructure:
     pullPolicy: IfNotPresent
     repository: alustan/terraform-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.93.19"
+    tag: "1.0.0"
   syncInterval: ""
   service:
     type: ClusterIP
@@ -41,7 +41,7 @@ app:
     pullPolicy: IfNotPresent
     repository: alustan/app-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0.93.19"
+    tag: "1.0.0"
   syncInterval: ""
   service:
     type: ClusterIP
