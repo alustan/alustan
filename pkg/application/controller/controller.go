@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"os"
+	"encoding/json"
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -223,7 +224,6 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				_, argoCancel := context.WithTimeout(ctx, 30*time.Second)
 				defer argoCancel()
 
-				c.logger.Info("Creating ArgoCD client with options", zap.Any("opts", argoClientOpts))
 				argoClient, err := apiclient.NewClient(&argoClientOpts)
 				if err != nil {
 					c.logger.Fatalf("Failed to create ArgoCD client: %v", err)
@@ -418,57 +418,77 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleSyncRequest(argoClient apiclient.Client,observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
-     
-	 secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
-	 key := "pat"
-	 gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
+func (c *Controller) handleSyncRequest(argoClient apiclient.Client, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
+    secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
+    key := "pat"
+    gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
 
-	 c.logger.Infof("Observed Parent Spec: %+v", observed.Spec)
-	 
- 
-	 commonStatus := v1alpha1.AppStatus{
-		 State:   "Progressing",
-		 Message: "Starting processing",
-	 }
-	 // Add finalizer if not already present
-	 err := Kubernetespkg.AddFinalizer(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
-	 if err != nil {
-		 c.logger.Errorf("Failed to add finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
-		 commonStatus.State = "Error"
-		 commonStatus.Message = fmt.Sprintf("Failed to add finalizer: %v", err)
-		 return commonStatus, err
-	 }
-	  finalizing := false
-	 // Check if the resource is being deleted
-	 if observed.ObjectMeta.DeletionTimestamp != nil {
-		 
-		 finalizing = true
-	 }
+    // Convert Raw fields to strings for better readability
+    sourceValues, err := convertRawValuesToString(observed.Spec.Source.Values)
+    if err != nil {
+        c.logger.Errorf("Failed to convert raw values to string: %v", err)
+        return v1alpha1.AppStatus{State: "Error", Message: fmt.Sprintf("Failed to convert raw values: %v", err)}, err
+    }
 
-	 taggedImageName,registryStatus :=  registry.HandleContainerRegistry(c.logger,c.Clientset,observed)
-	  commonStatus = mergeStatuses(commonStatus, registryStatus)
-	  if registryStatus.State == "Error" {
+    // Log the structured information with source values handled separately
+    c.logger.Infof("Observed Parent Spec: %+v", map[string]interface{}{
+        "Workspace":          observed.Spec.Workspace,
+        "ContainerRegistry": observed.Spec.ContainerRegistry,
+        "Dependencies":       observed.Spec.Dependencies,
+        "Source": map[string]interface{}{
+            "RepoURL":        observed.Spec.Source.RepoURL,
+            "Path":           observed.Spec.Source.Path,
+            "ReleaseName":    observed.Spec.Source.ReleaseName,
+            "TargetRevision": observed.Spec.Source.TargetRevision,
+            "Values":         sourceValues, 
+        },
+    })
+
+    commonStatus := v1alpha1.AppStatus{
+        State:   "Progressing",
+        Message: "Starting processing",
+    }
+
+    // Add finalizer if not already present
+    err = Kubernetespkg.AddFinalizer(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
+    if err != nil {
+        c.logger.Errorf("Failed to add finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
+        commonStatus.State = "Error"
+        commonStatus.Message = fmt.Sprintf("Failed to add finalizer: %v", err)
+        return commonStatus, err
+    }
+
+    finalizing := false
+    // Check if the resource is being deleted
+    if observed.ObjectMeta.DeletionTimestamp != nil {
+        finalizing = true
+    }
+
+    taggedImageName, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
+    commonStatus = mergeStatuses(commonStatus, registryStatus)
+    if registryStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error getting tagged image name")
     }
 
-     c.logger.Infof("taggedImageName: %v", taggedImageName)
+    c.logger.Infof("taggedImageName: %v", taggedImageName)
 
-	 err = Kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(c.logger , c.Clientset, observed.ObjectMeta.Namespace, secretName, key, gitHubPATBase64 )
-     
-	 if err != nil {
-		return commonStatus, fmt.Errorf("Failed to create/update secret: %v", err)
-	}
-	 // Handle RunService
-	 runServiceStatus := service.RunService(c.logger,c.Clientset, c.dynClient, argoClient, observed, secretName, key, finalizing)
-	 commonStatus = mergeStatuses(commonStatus, runServiceStatus)
- 
-	 if runServiceStatus.State == "Error" {
-		 return commonStatus, fmt.Errorf("error running service")
-	 }
- 
-	 return commonStatus, nil
- }
+    err = Kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(c.logger, c.Clientset, observed.ObjectMeta.Namespace, secretName, key, gitHubPATBase64)
+    if err != nil {
+        return commonStatus, fmt.Errorf("Failed to create/update secret: %v", err)
+    }
+
+    // Handle RunService and process its status and error
+    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, argoClient, observed, secretName, key, finalizing)
+	
+	commonStatus = mergeStatuses(commonStatus, runServiceStatus)
+	
+	if runServiceErr != nil {
+        return commonStatus, fmt.Errorf("error running service: %v", runServiceErr)
+    }
+
+   return commonStatus, nil
+}
+
 
 // Define the helper function to check if HealthStatus is empty
 func isEmptyApplicationSetStatus(status appv1alpha1.ApplicationSetStatus) bool {
@@ -507,3 +527,19 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 }
 
 
+func convertRawValuesToString(rawValues map[string]runtime.RawExtension) (map[string]string, error) {
+    stringValues := make(map[string]string)
+    for key, rawValue := range rawValues {
+        var value interface{}
+        err := json.Unmarshal(rawValue.Raw, &value)
+        if err != nil {
+            return nil, err
+        }
+        strValue, err := json.Marshal(value)
+        if err != nil {
+            return nil, err
+        }
+        stringValues[key] = string(strValue)
+    }
+    return stringValues, nil
+}

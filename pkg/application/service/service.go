@@ -39,14 +39,17 @@ func RunService(
     observed *v1alpha1.App,
     secretName, key string,
     finalizing bool,
-) v1alpha1.AppStatus {
+) (v1alpha1.AppStatus, error) {
 
     var status v1alpha1.AppStatus
 
     if finalizing {
         logger.Info("Attempting to delete application")
-        status, _ = DeleteApplicationSet(logger, clientset, dynamicClient, argoClient, observed)
-        return status
+        status, err := DeleteApplicationSet(logger, clientset, dynamicClient, argoClient, observed)
+        if err != nil {
+            return status, fmt.Errorf("error deleting ApplicationSet: %v", err)
+        }
+        return status, nil
     }
 
     status = v1alpha1.AppStatus{
@@ -54,7 +57,7 @@ func RunService(
         Message: "Running App",
     }
 
-   // Extract dependencies
+    // Extract dependencies
     dependencies := ExtractDependencies(observed)
 
     // Check if all dependent ApplicationSets are healthy before proceeding
@@ -64,20 +67,20 @@ func RunService(
 
     err := WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
     if err != nil {
-        return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err)
+        return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err), err
     }
 
     // Proceed with creating the ApplicationSet
     appStatus, err := CreateApplicationSet(logger, clientset, argoClient, observed, secretName, key)
     if err != nil {
-        return errorstatus.ErrorResponse(logger, "Running App", err)
+        return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
 
     // Ensure appStatus is not nil before dereferencing
     if appStatus == nil {
         status.State = "Failed"
         status.Message = "ApplicationSet creation failed"
-        return status
+        return status, nil
     }
 
     // Fetch and validate Ingress URLs
@@ -85,14 +88,14 @@ func RunService(
     if err != nil {
         status.State = "Failed"
         status.Message = fmt.Sprintf("Error retrieving Ingress URLs: %v", err)
-        return status
+        return status, err
     }
 
     convertedIngressURLs, err := convertToRawExtensionMap(ingressURLs)
     if err != nil {
         status.State = "Failed"
         status.Message = fmt.Sprintf("Error converting ingress URLs: %v", err)
-        return status
+        return status, err
     }
 
     // Preserve any existing status fields in the AppStatus struct
@@ -103,8 +106,9 @@ func RunService(
         PreviewURLs:  convertedIngressURLs,
     }
 
-    return finalStatus
+    return finalStatus, nil
 }
+
 
 
 
