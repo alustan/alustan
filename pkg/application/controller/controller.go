@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	apiclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"k8s.io/apimachinery/pkg/util/wait"
+
 	
 
 	"github.com/alustan/alustan/pkg/application/registry"
@@ -57,35 +57,16 @@ type Controller struct {
 	
 }
 
-// Ensure the setup function is called only once
-var setupOnce sync.Once
-
-
-func setupArgoCD(sugar *zap.SugaredLogger, clientset kubernetes.Interface, dynClient dynamic.Interface) {
-	setupOnce.Do(func() {
-		err := wait.ExponentialBackoff(installargocd.RetryBackoff(), func() (bool, error) {
-			argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "7.3.11")
-			if argoerr != nil {
-				sugar.Error("ArgoCD setup failed: ", argoerr)
-				return true, argoerr 
-			}
-			return true, nil
-		})
-		if err != nil {
-			sugar.Fatal(err.Error())
-		}
-	})
-}
-
-
-
 // NewController initializes a new controller
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	setupArgoCD(sugar, clientset, dynClient)
+	argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "6.6.0")
+	if argoerr != nil {
+		sugar.Fatal(argoerr.Error())
+	}
 
 	argoURL := "http://argocd-server.argocd.svc.cluster.local"
 
@@ -114,7 +95,8 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		argoClient:      argoClient,
 	}
 
-	// Initialize informer
+	
+    // Initialize informer
 	ctrl.initInformer()
 
 	return ctrl
@@ -526,3 +508,5 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 	return nil
 
 }
+
+
