@@ -33,7 +33,7 @@ spec:
               value: {{ .Values.app.syncInterval }}
 
             - name: ARGOCD_CONFIG
-              value: {{ .Values.argocdConfig }}
+              value: {{ .Values.argocdConfig | quote }}
 
               
            
