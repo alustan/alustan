@@ -57,18 +57,15 @@ type Controller struct {
 	
 }
 
-// NewController initializes a new controller
-func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
 
-	argoerr := installargocd.InstallArgoCD(sugar, clientset, dynClient, "6.6.0")
+// NewController initializes a new controller
+func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
+	argoerr := installargocd.InstallArgoCD(logger, clientset, dynClient, "6.6.0")
 	if argoerr != nil {
-		sugar.Fatal(argoerr.Error())
+		logger.Fatal(argoerr.Error())
 	}
 
-	argoURL := "http://argocd-server.argocd.svc.cluster.local"
+	argoURL := "http://argocd-server.argocd.svc.cluster.local:80"
 
 	// Initialize ArgoCD client
 	argoClientOpts := apiclient.ClientOptions{
@@ -77,7 +74,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 	}
 	argoClient, err := apiclient.NewClient(&argoClientOpts)
 	if err != nil {
-		sugar.Fatal(err.Error())
+		logger.Fatal(err.Error())
 	}
 
 	ctrl := &Controller{
@@ -87,7 +84,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		lastSyncTime:    time.Now().Add(-syncInterval), // Initialize to allow immediate first run
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "apps"),
 		informerFactory: dynamicinformer.NewDynamicSharedInformerFactory(dynClient, syncInterval),
-		logger:          sugar,
+		logger:          logger,
 		numWorkers:      0,
 		maxWorkers:      5,
 		workerStopCh:    make(chan struct{}),
@@ -95,38 +92,33 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		argoClient:      argoClient,
 	}
 
-	
-    // Initialize informer
+	// Initialize informer
 	ctrl.initInformer()
 
 	return ctrl
 }
 
 
-func NewInClusterController(syncInterval time.Duration) *Controller {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-
+func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		sugar.Fatalf("Error creating in-cluster config: %v", err)
+		logger.Fatalf("Error creating in-cluster config: %v", err)
 	}
 
 	config.QPS = 100.0
-    config.Burst = 200
+	config.Burst = 200
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		sugar.Fatalf("Error creating Kubernetes clientset: %v", err)
+		logger.Fatalf("Error creating Kubernetes clientset: %v", err)
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
-		sugar.Fatalf("Error creating dynamic Kubernetes client: %v", err)
+		logger.Fatalf("Error creating dynamic Kubernetes client: %v", err)
 	}
 
-	return NewController(clientset, dynClient, syncInterval)
+	return NewController(clientset, dynClient, syncInterval, logger)
 }
 
 func (c *Controller) initInformer() {

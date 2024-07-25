@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +13,7 @@ import (
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/infrastructure/controller"
 	"github.com/alustan/alustan/api/infrastructure/v1alpha1"
+	"go.uber.org/zap"
 )
 
 // Variables to be set by ldflags
@@ -29,33 +29,40 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(runtime.NewScheme()))
 }
 
-
 func main() {
 	fmt.Printf("Version: %s\n", version)
 	fmt.Printf("Commit: %s\n", commit)
 	fmt.Printf("Date: %s\n", date)
 	fmt.Printf("Built by: %s\n", builtBy)
 
+	// Initialize logger
+	logger, _ := zap.NewProduction()
+	defer logger.Sync() // Ensure logger is flushed on shutdown
+	sugar := logger.Sugar()
+
 	infraSyncInterval, _ := util.GetSyncIntervals()
-	log.Printf("Sync interval is set to %v", infraSyncInterval)
+	sugar.Infof("Sync interval is set to %v", infraSyncInterval)
 
 	// Create a stop channel
 	stopCh := make(chan struct{})
 
-	// Create a controller
-	ctrl := controller.NewInClusterController(infraSyncInterval)
+	// Create a controller and pass the logger
+	ctrl := controller.NewInClusterController(infraSyncInterval, sugar)
 
-	// Start the reconciliation loop 
-	 ctrl.RunLeader(stopCh)
+	// Start the reconciliation loop
+	go func() {
+		ctrl.RunLeader(stopCh)
+	}()
 
 	// Handle shutdown signals to stop the reconciliation loop gracefully
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-signalChan
-		log.Println("Received shutdown signal, stopping reconciliation loop...")
+		sugar.Info("Received shutdown signal, stopping reconciliation loop...")
 		close(stopCh)
 		time.Sleep(1 * time.Second) // Give some time for the loop to stop
+		logger.Sync()
 		os.Exit(0)
 	}()
 

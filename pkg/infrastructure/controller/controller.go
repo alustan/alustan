@@ -51,11 +51,8 @@ type Controller struct {
 }
 
 
-func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration) *Controller {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-	
+// NewController initializes a new controller
+func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
 	ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
@@ -63,7 +60,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		lastSyncTime:    time.Now().Add(-syncInterval), // Initialize to allow immediate first run
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "terraforms"),
 		informerFactory: dynamicinformer.NewDynamicSharedInformerFactory(dynClient, syncInterval),
-		logger:          sugar,
+		logger:          logger,
 		numWorkers:      0,
 		maxWorkers:      5,
 		workerStopCh:    make(chan struct{}),
@@ -77,30 +74,26 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 	return ctrl
 }
 
-func NewInClusterController(syncInterval time.Duration) *Controller {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-
+func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		sugar.Fatalf("Error creating in-cluster config: %v", err)
+		logger.Fatalf("Error creating in-cluster config: %v", err)
 	}
 
 	config.QPS = 100.0
-    config.Burst = 200
+	config.Burst = 200
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		sugar.Fatalf("Error creating Kubernetes clientset: %v", err)
+		logger.Fatalf("Error creating Kubernetes clientset: %v", err)
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
-		sugar.Fatalf("Error creating dynamic Kubernetes client: %v", err)
+		logger.Fatalf("Error creating dynamic Kubernetes client: %v", err)
 	}
 
-	return NewController(clientset, dynClient, syncInterval)
+	return NewController(clientset, dynClient, syncInterval, logger)
 }
 
 func (c *Controller) initInformer() {
