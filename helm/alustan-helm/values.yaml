@@ -18,10 +18,10 @@ serviceAccount:
   automount: true
   # Annotations to add to the service account
   annotations:
-    # eks.amazonaws.com/role-arn: ""
+  # eks.amazonaws.com/role-arn: ""
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: "" 
+  name: ""
 # Infrastructure specific values file
 infrastructure:
   replicaCount: 1
@@ -29,7 +29,7 @@ infrastructure:
     pullPolicy: IfNotPresent
     repository: alustan/terraform-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.0.0"
+    tag: "0.93.19"
   syncInterval: ""
   service:
     type: ClusterIP
@@ -41,10 +41,13 @@ app:
     pullPolicy: IfNotPresent
     repository: alustan/app-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.0.0"
+    tag: "0.93.19"
   syncInterval: ""
   service:
     type: ClusterIP
     port: 8081
-
-argocdConfig: ""
+argocdConfig: |
+  redis:
+    image:
+      repository: redis
+      tag: 7.2.4-alpine
