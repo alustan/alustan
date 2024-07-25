@@ -65,7 +65,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		logger.Fatal(argoerr.Error())
 	}
 
-	argoURL := "argocd-server.argocd.svc.cluster.local:80"
+	argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:80"
 
 	// Initialize ArgoCD client
 	argoClientOpts := apiclient.ClientOptions{
