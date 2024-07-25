@@ -65,19 +65,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		logger.Fatal(argoerr.Error())
 	}
 
-	argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:80"
-
-	// Initialize ArgoCD client
-	argoClientOpts := apiclient.ClientOptions{
-		ServerAddr: argoURL,
-		PlainText:  true,
-	}
-	argoClient, err := apiclient.NewClient(&argoClientOpts)
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-
-	ctrl := &Controller{
+    ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
 		syncInterval:    syncInterval,
@@ -89,7 +77,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		maxWorkers:      5,
 		workerStopCh:    make(chan struct{}),
 		managerStopCh:   make(chan struct{}),
-		argoClient:      argoClient,
+		
 	}
 
 	// Initialize informer
@@ -212,7 +200,6 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		resourcelock.ResourceLockConfig{
 			Identity: id,
 		},
-		
 	)
 	if err != nil {
 		c.logger.Fatalf("Failed to create resource lock: %v", err)
@@ -226,6 +213,19 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("Became leader, starting reconciliation loop")
+
+				// Initialize ArgoCD client
+				argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:80"
+				argoClientOpts := apiclient.ClientOptions{
+					ServerAddr: argoURL,
+					PlainText:  true,
+				}
+				argoClient, err := apiclient.NewClient(&argoClientOpts)
+				if err != nil {
+					c.logger.Fatal(err.Error())
+				}
+				c.argoClient = argoClient
+
 				// Start processing items
 				go c.manageWorkers()
 			},
@@ -234,7 +234,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				// Stop processing items
 				close(c.workerStopCh)  // Stop all individual runWorker functions
 				close(c.managerStopCh) // Stop the manageWorkers function
-                c.workqueue.ShutDown()
+				c.workqueue.ShutDown()
 			},
 		},
 		ReleaseOnCancel: true,
