@@ -180,7 +180,6 @@ func (c *Controller) enqueue(key string) {
 }
 
 
-
 func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 	defer c.logger.Sync()
 
@@ -215,16 +214,23 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				c.logger.Info("Became leader, starting reconciliation loop")
 
 				// Initialize ArgoCD client
-				argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:80"
+				argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:8080"
 				argoClientOpts := apiclient.ClientOptions{
 					ServerAddr: argoURL,
 					PlainText:  true,
 				}
+				
+				_, argoCancel := context.WithTimeout(ctx, 30*time.Second)
+				defer argoCancel()
+
+				c.logger.Info("Creating ArgoCD client with options", zap.Any("opts", argoClientOpts))
 				argoClient, err := apiclient.NewClient(&argoClientOpts)
 				if err != nil {
-					c.logger.Fatal(err.Error())
+					c.logger.Fatalf("Failed to create ArgoCD client: %v", err)
 				}
+
 				c.argoClient = argoClient
+				c.logger.Info("Successfully connected to ArgoCD server")
 
 				// Start processing items
 				go c.manageWorkers()
@@ -240,7 +246,6 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		ReleaseOnCancel: true,
 	})
 }
-
 
 func (c *Controller) manageWorkers() {
 	for {
