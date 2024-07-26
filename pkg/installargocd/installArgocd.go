@@ -153,7 +153,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 	}
 
 	chart, err := loader.Load(chartPath)
-	if err != nil {
+	if (err != nil) {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
 
@@ -179,6 +179,14 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 		vals = defaultVals
 	}
 
+	// Check if another operation is in progress
+	statusClient := action.NewStatus(actionConfig)
+	release, err := statusClient.Run("argo-cd")
+	if err == nil && release.Info.Status.IsPending() {
+		logger.Warn("Another operation is in progress for release argo-cd, skipping new operation.")
+		return nil // Return without starting a new operation
+	}
+
 	// Perform install or upgrade with exponential backoff retry mechanism
 	err = wait.ExponentialBackoff(RetryBackoff(), func() (bool, error) {
 		histClient := action.NewHistory(actionConfig)
@@ -193,13 +201,11 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 		}
 
 		if err != nil {
-			
-			return false, err 
+			return false, err
 		}
 
 		return true, nil // Stop retrying if successful
 	})
-
 
 	if err != nil {
 		return fmt.Errorf("failed to install/upgrade ArgoCD with Helm: %w", err)
@@ -207,6 +213,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 
 	return nil
 }
+
 
 func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
 	upgrade := action.NewUpgrade(actionConfig)

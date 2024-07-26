@@ -345,6 +345,13 @@ func CreateApplicationSet(
  
      // Convert modifiedValues to Helm string format
      helmValues := formatValuesAsHelmString(logger,modifiedValues)
+
+     argoSecretName := fmt.Sprintf("%s-local-cluster", observed.ObjectMeta.Name)
+
+	err = kubernetespkg.CreateOrUpdateArgoSecret(logger, clientset,argoSecretName, cluster)
+	if err != nil {
+        return nil,err
+    }
     
     
    var generators []appv1alpha1.ApplicationSetGenerator

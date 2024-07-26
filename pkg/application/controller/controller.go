@@ -477,7 +477,7 @@ func (c *Controller) handleSyncRequest(argoClient apiclient.Client, observed *v1
         return commonStatus, fmt.Errorf("Failed to create/update secret: %v", err)
     }
 
-    // Handle RunService and process its status and error
+   // Handle RunService and process its status and error
     runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, argoClient, observed, secretName, key, finalizing)
 	
 	commonStatus = mergeStatuses(commonStatus, runServiceStatus)
