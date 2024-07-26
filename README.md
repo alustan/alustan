@@ -306,6 +306,7 @@ spec:
     enabled: true
     gitOwner: alustan
     gitRepo: web-app-demo
+    intervalSeconds: 600
   source:
     repoURL: https://github.com/alustan/cluster-manifests
     path: application-helm

@@ -73,6 +73,8 @@ spec:
                     type: string
                   gitRepo:
                     type: string
+                  intervalSeconds:
+                    type: int
                 required:
                 - enabled
                 - gitOwner
