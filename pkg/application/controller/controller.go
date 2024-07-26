@@ -218,7 +218,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:8080"
 				argoClientOpts := apiclient.ClientOptions{
 					ServerAddr: argoURL,
-					PlainText:  true,
+					Insecure:   true,
 				}
 				
 				_, argoCancel := context.WithTimeout(ctx, 30*time.Second)
