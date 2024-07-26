@@ -142,20 +142,20 @@ func fetchSecretAnnotations(
 }
 
 // replaceWorkspaceValues replaces placeholders in the values map with corresponding values from the output map
-func replaceWorkspaceValues(logger *zap.SugaredLogger,values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
+func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
     var clusterValue string
     modifiedValues := make(map[string]interface{})
 
     for key, value := range values {
         switch v := value.(type) {
         case string:
-            replacedValue := replacePlaceholder(logger,v, output)
+            replacedValue := replacePlaceholder(v, output)
             modifiedValues[key] = replacedValue
             if key == "cluster" {
                 clusterValue = replacedValue
             }
         case map[string]interface{}:
-            nestedValues, nestedClusterValue := replaceWorkspaceValues(logger,v, output)
+            nestedValues, nestedClusterValue := replaceWorkspaceValues(v, output)
             modifiedValues[key] = nestedValues
             if nestedClusterValue != "" {
                 clusterValue = nestedClusterValue
@@ -244,7 +244,7 @@ func indent(text, prefix string) string {
 }
 
 // replacePlaceholder replaces placeholders in the value string with corresponding values from the output map
-func replacePlaceholder(logger *zap.SugaredLogger,value string, output map[string]string) string {
+func replacePlaceholder(value string, output map[string]string) string {
 	// Regular expression to find placeholders with optional spaces around the key
 	re := regexp.MustCompile(`\$\{\s*workspace\.(\w+)\s*\}`)
 
@@ -254,7 +254,7 @@ func replacePlaceholder(logger *zap.SugaredLogger,value string, output map[strin
 		if len(matches) > 1 {
 			key := matches[1]
 			if val, exists := output[key]; exists {
-				logger.Infof("Replacing placeholder %s with %s\n", placeholder, val)
+				
 				return val
 			}
 		}
@@ -301,80 +301,85 @@ func CreateApplicationSet(
     targetRevision := observed.Spec.Source.TargetRevision
     requeueAfterSeconds := 600
     if intervalSeconds > 0 {
-    requeueAfterSeconds = intervalSeconds
+        requeueAfterSeconds = intervalSeconds
     }
 
-    
-     // Convert RawExtension values to interface{}
-     convertedValues, err := convertRawExtensionsToInterface(values)
-     if err != nil {
-         return nil, fmt.Errorf("failed to convert values: %v", err)
-     }
- 
-     var modifiedValues map[string]interface{}
-     var cluster string
- 
-     // Check if values contain placeholders like ${workspace.}
-     if containsPlaceholders(convertedValues, "${workspace.") {
-         annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
-         if err != nil {
-             if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
-                 // Return an empty ApplicationSet and log the error
-                 logger.Warnf("No secret found with specified labels: %s", err.Error())
-                 return nil, nil
-             }
-             logger.Error(err.Error())
-             return nil, err
-         }
- 
-         // Check if annotations are empty
-         if len(annotations) == 0 {
-             logger.Error("No annotations found and values contain placeholders")
-             return nil, nil
-         }
- 
-         // Replace placeholders with values from annotations
-         modifiedValues, cluster = replaceWorkspaceValues(logger,convertedValues, annotations)
-     } else {
-         logger.Info("No placeholders in values, continuing execution with default values")
-         modifiedValues = convertedValues
+    logger.Infof("Creating ApplicationSet with name: %s in namespace: %s", name, namespace)
 
-           // Extract the value of the key 'cluster' from convertedValues
+    // Convert RawExtension values to interface{}
+    convertedValues, err := convertRawExtensionsToInterface(values)
+    if err != nil {
+        logger.Errorf("Failed to convert values: %v", err)
+        return nil, fmt.Errorf("failed to convert values: %v", err)
+    }
+    logger.Debugf("Converted values: %v", convertedValues)
+
+    var modifiedValues map[string]interface{}
+    var cluster string
+
+    // Check if values contain placeholders like ${workspace.}
+    if containsPlaceholders(convertedValues, "${workspace.") {
+        logger.Info("Values contain placeholders. Fetching annotations.")
+        annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
+        if err != nil {
+            if err.Error() == fmt.Sprintf("no secret found with label %s=%s and %s=%s", secretTypeLabel, secretTypeValue, environmentLabel, environmentValue) {
+                // Return an empty ApplicationSet and log the error
+                logger.Warnf("No secret found with specified labels: %s", err.Error())
+                return nil, nil
+            }
+            logger.Errorf("Failed to fetch secret annotations: %v", err)
+            return nil, err
+        }
+
+        // Check if annotations are empty
+        if len(annotations) == 0 {
+            logger.Error("No annotations found and values contain placeholders")
+            return nil, nil
+        }
+
+        // Replace placeholders with values from annotations
+        modifiedValues, cluster = replaceWorkspaceValues(convertedValues, annotations)
+    } else {
+        logger.Info("No placeholders in values, continuing execution with default values")
+        modifiedValues = convertedValues
+
+        // Extract the value of the key 'cluster' from convertedValues
         if clusterValue, exists := convertedValues["cluster"]; exists {
             if clusterStr, ok := clusterValue.(string); ok {
                 cluster = clusterStr
             } else {
-               
-             logger.Error("Cluster value is not a string")
-             return nil, nil
+                logger.Error("Cluster value is not a string")
+                return nil, nil
             }
         } else {
-             // Log and return if cluster value is not found
-             logger.Error("Cluster key not found in values")
-             return nil, nil
+            logger.Error("Cluster key not found in values")
+            return nil, nil
         }
-     }
- 
-     // Modify Ingress hosts if preview is true
-     if preview {
-         modifiedValues = modifyIngressHost(modifiedValues, preview, "preview-{{.branch}}-{{.number}}")
-     }
- 
-     // Convert modifiedValues to Helm string format
-     helmValues := formatValuesAsHelmString(logger,modifiedValues)
-
-     argoSecretName := fmt.Sprintf("%s-local-cluster", observed.ObjectMeta.Name)
-
-	err = kubernetespkg.CreateOrUpdateArgoSecret(logger, clientset,argoSecretName, cluster)
-	if err != nil {
-        return nil,err
     }
-    
-    
-   var generators []appv1alpha1.ApplicationSetGenerator
+
+    // Modify Ingress hosts if preview is true
+    if preview {
+        logger.Info("Preview environment enabled. Modifying Ingress hosts.")
+        modifiedValues = modifyIngressHost(modifiedValues, preview, "preview-{{.branch}}-{{.number}}")
+    }
+
+    // Convert modifiedValues to Helm string format
+    helmValues := formatValuesAsHelmString(logger, modifiedValues)
+    logger.Debugf("Formatted Helm values: %s", helmValues)
+
+    argoSecretName := fmt.Sprintf("%s-local-cluster", observed.ObjectMeta.Name)
+
+    err = kubernetespkg.CreateOrUpdateArgoSecret(logger, clientset, argoSecretName, cluster)
+    if err != nil {
+        logger.Errorf("Failed to create or update ArgoCD secret: %v", err)
+        return nil, err
+    }
+
+    var generators []appv1alpha1.ApplicationSetGenerator
 
     // Define generators based on the strategy
     if preview {
+        logger.Info("Defining generators for preview environment.")
         requeueAfterSeconds := int64(requeueAfterSeconds)
         generators = []appv1alpha1.ApplicationSetGenerator{
             {
@@ -408,6 +413,7 @@ func CreateApplicationSet(
             },
         }
     } else {
+        logger.Info("Defining generators for non-preview environment.")
         generators = []appv1alpha1.ApplicationSetGenerator{
             {
                 Clusters: &appv1alpha1.ClusterGenerator{
@@ -481,32 +487,32 @@ func CreateApplicationSet(
         },
     }
 
-  
-// Create or update ApplicationSet in ArgoCD
-_, applicationSetClient, err := argoClient.NewApplicationSetClient()
-if err != nil {
-    return nil, err
-}
+    logger.Info("Creating ApplicationSet in ArgoCD.")
+    _, applicationSetClient, err := argoClient.NewApplicationSetClient()
+    if err != nil {
+        logger.Errorf("Failed to create ArgoCD ApplicationSet client: %v", err)
+        return nil, err
+    }
 
-// Create the ApplicationSet
-_, err = applicationSetClient.Create(context.TODO(), &applicationset.ApplicationSetCreateRequest{
-    Applicationset: &appv1alpha1.ApplicationSet{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      appSet.Name,
-            Namespace: appSet.Namespace,
+    _, err = applicationSetClient.Create(context.TODO(), &applicationset.ApplicationSetCreateRequest{
+        Applicationset: &appv1alpha1.ApplicationSet{
+            ObjectMeta: metav1.ObjectMeta{
+                Name:      appSet.Name,
+                Namespace: appSet.Namespace,
+            },
+            Spec: appSet.Spec,
         },
-        Spec: appSet.Spec,
-    },
-})
-if err != nil {
-    return nil, err
+    })
+    if err != nil {
+        logger.Errorf("Failed to create ApplicationSet: %v", err)
+        return nil, err
+    }
+
+    logger.Infof("Successfully applied ApplicationSet '%s' using ArgoCD", appSet.Name)
+
+    return &appSet.Status, nil
 }
 
-
-fmt.Printf("Successfully applied ApplicationSet '%s' using ArgoCD\n", appSet.Name)
-
-return &appSet.Status, nil
-}
 
 func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, argoClient apiclient.Client, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
 
