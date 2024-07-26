@@ -14,10 +14,9 @@ import (
 // CreateOrUpdateServiceAccountAndRoles creates or updates a namespace, ServiceAccount, ClusterRole, and ClusterRoleBinding for the specified namespace.
 // It returns the ServiceAccount name and any error encountered.
 func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset kubernetes.Interface, name string, namespace string) (string, error) {
-	
 	saIdentifier := fmt.Sprintf("terraform-%s", name)
 	roleIdentifier := fmt.Sprintf("terraform-role-%s", name)
-	
+
 	// Define Namespace
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -34,12 +33,25 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 
 	logger.Infof("Namespace %s created or already exists.", namespace)
 
+	// Get annotations from existing ServiceAccount in the alustan namespace
+	alustanSAName := "terraform-sa"
+	alustanSANamespace := "alustan"
+	alustanSA, err := clientset.CoreV1().ServiceAccounts(alustanSANamespace).Get(context.Background(), alustanSAName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		logger.Infof("Failed to get Service Account from namespace 'alustan': %v", err)
+		return "", err
+	}
+	var annotations map[string]string
+	if alustanSA != nil {
+		annotations = alustanSA.Annotations
+	}
+
 	// Define Service Account
-	
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      saIdentifier,
-			Namespace: namespace,
+			Name:        saIdentifier,
+			Namespace:   namespace,
+			Annotations: annotations,
 		},
 	}
 
@@ -53,7 +65,6 @@ func CreateOrUpdateServiceAccountAndRoles(logger *zap.SugaredLogger, clientset k
 	logger.Infof("Service Account %s created or already exists in namespace %s.", sa.Name, namespace)
 
 	// Define ClusterRole with expanded permissions
-	
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: roleIdentifier,

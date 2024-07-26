@@ -74,7 +74,7 @@ spec:
                   gitRepo:
                     type: string
                   intervalSeconds:
-                    type: int
+                    type: integer
                 required:
                 - enabled
                 - gitOwner
