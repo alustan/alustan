@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"encoding/json"
+    "regexp"
 
     "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
@@ -141,20 +142,20 @@ func fetchSecretAnnotations(
 }
 
 // replaceWorkspaceValues replaces placeholders in the values map with corresponding values from the output map
-func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
+func replaceWorkspaceValues(logger *zap.SugaredLogger,values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
     var clusterValue string
     modifiedValues := make(map[string]interface{})
 
     for key, value := range values {
         switch v := value.(type) {
         case string:
-            replacedValue := replacePlaceholder(v, output)
+            replacedValue := replacePlaceholder(logger,v, output)
             modifiedValues[key] = replacedValue
             if key == "cluster" {
                 clusterValue = replacedValue
             }
         case map[string]interface{}:
-            nestedValues, nestedClusterValue := replaceWorkspaceValues(v, output)
+            nestedValues, nestedClusterValue := replaceWorkspaceValues(logger,v, output)
             modifiedValues[key] = nestedValues
             if nestedClusterValue != "" {
                 clusterValue = nestedClusterValue
@@ -242,12 +243,23 @@ func indent(text, prefix string) string {
 	return indented.String()
 }
 
-func replacePlaceholder(value string, output map[string]string) string {
-	for key, val := range output {
-		placeholder := fmt.Sprintf("${workspace.%s}", key)
-		value = strings.ReplaceAll(value, placeholder, val)
-	}
-	return value
+// replacePlaceholder replaces placeholders in the value string with corresponding values from the output map
+func replacePlaceholder(logger *zap.SugaredLogger,value string, output map[string]string) string {
+	// Regular expression to find placeholders with optional spaces around the key
+	re := regexp.MustCompile(`\$\{\s*workspace\.(\w+)\s*\}`)
+
+	return re.ReplaceAllStringFunc(value, func(placeholder string) string {
+		// Extract the key and trim spaces
+		matches := re.FindStringSubmatch(placeholder)
+		if len(matches) > 1 {
+			key := matches[1]
+			if val, exists := output[key]; exists {
+				logger.Infof("Replacing placeholder %s with %s\n", placeholder, val)
+				return val
+			}
+		}
+		return placeholder // return the original placeholder if no match found
+	})
 }
 
 func convertRawExtensionsToInterface(values map[string]runtime.RawExtension) (map[string]interface{}, error) {
@@ -280,12 +292,17 @@ func CreateApplicationSet(
     preview := observed.Spec.PreviewEnvironment.Enabled
     gitOwner := observed.Spec.PreviewEnvironment.GitOwner
     gitRepo := observed.Spec.PreviewEnvironment.GitRepo
+    intervalSeconds := observed.Spec.PreviewEnvironment.IntervalSeconds
     name := observed.ObjectMeta.Name
     namespace := observed.ObjectMeta.Namespace
     repoURL := observed.Spec.Source.RepoURL
     path := observed.Spec.Source.Path
     releaseName := observed.Spec.Source.ReleaseName
     targetRevision := observed.Spec.Source.TargetRevision
+    requeueAfterSeconds := 600
+    if intervalSeconds > 0 {
+    requeueAfterSeconds = intervalSeconds
+    }
 
     
      // Convert RawExtension values to interface{}
@@ -317,7 +334,7 @@ func CreateApplicationSet(
          }
  
          // Replace placeholders with values from annotations
-         modifiedValues, cluster = replaceWorkspaceValues(convertedValues, annotations)
+         modifiedValues, cluster = replaceWorkspaceValues(logger,convertedValues, annotations)
      } else {
          logger.Info("No placeholders in values, continuing execution with default values")
          modifiedValues = convertedValues
@@ -358,7 +375,7 @@ func CreateApplicationSet(
 
     // Define generators based on the strategy
     if preview {
-        requeueAfterSeconds := int64(600)
+        requeueAfterSeconds := int64(requeueAfterSeconds)
         generators = []appv1alpha1.ApplicationSetGenerator{
             {
                 Matrix: &appv1alpha1.MatrixGenerator{

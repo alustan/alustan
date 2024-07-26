@@ -23,6 +23,7 @@ type PreviewEnvironment struct {
 	Enabled  bool   `json:"enabled"`
 	GitOwner string `json:"gitOwner"`
 	GitRepo  string `json:"gitRepo"`
+    IntervalSeconds int `json:"intervalSeconds"`
 }
 
 // SourceSpec defines the source repository and deployment values
