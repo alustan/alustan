@@ -488,21 +488,23 @@ func CreateApplicationSet(
     }
 
     logger.Info("Creating ApplicationSet in ArgoCD.")
-    _, applicationSetClient, err := argoClient.NewApplicationSetClient()
-    if err != nil {
-        logger.Errorf("Failed to create ArgoCD ApplicationSet client: %v", err)
-        return nil, err
-    }
 
-    _, err = applicationSetClient.Create(context.TODO(), &applicationset.ApplicationSetCreateRequest{
-        Applicationset: &appv1alpha1.ApplicationSet{
-            ObjectMeta: metav1.ObjectMeta{
-                Name:      appSet.Name,
-                Namespace: appSet.Namespace,
-            },
-            Spec: appSet.Spec,
-        },
+    var createdAppset *appv1alpha1.ApplicationSet
+
+    err = retry.OnError(retry.DefaultRetry, errors.IsInternalError, func() error {
+        closer, applicationSetClient, err := argoClient.NewApplicationSetClient()
+        if err != nil {
+            logger.Errorf("Failed to create ArgoCD ApplicationSet client: %v", err)
+            return err
+        }
+        defer closer.Close()
+
+        createdAppset, err = applicationSetClient.Create(context.TODO(), &applicationset.ApplicationSetCreateRequest{
+            Applicationset: appSet,
+        })
+        return err
     })
+
     if err != nil {
         logger.Errorf("Failed to create ApplicationSet: %v", err)
         return nil, err
@@ -510,8 +512,9 @@ func CreateApplicationSet(
 
     logger.Infof("Successfully applied ApplicationSet '%s' using ArgoCD", appSet.Name)
 
-    return &appSet.Status, nil
+    return &createdAppset.Status, nil
 }
+
 
 
 func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, argoClient apiclient.Client, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
