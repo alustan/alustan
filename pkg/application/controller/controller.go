@@ -549,15 +549,15 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
     if token == "" {
         return nil, fmt.Errorf("token is required")
     }
-    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:8080"
-
-  
+    
+    // Use the correct port for HTTPS
+    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:443"
 
     // Create Argo CD client options
     argoClientOpts := apiclient.ClientOptions{
         ServerAddr: argoURL,
         AuthToken:  token,
-        Insecure:   true, 
+        Insecure:   true,  
     }
 
     // Create the Argo CD client
@@ -568,5 +568,3 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
 
     return argoClient, nil
 }
-
-
