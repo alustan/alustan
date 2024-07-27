@@ -36,14 +36,13 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 
 
-	// Initialize logger with debug level
-	config := zap.NewProductionConfig()
-	config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-	logger, err := config.Build()
+	// Initialize logger
+	logger, err := zap.NewProduction()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
+	
 
 	defer logger.Sync() // Ensure logger is flushed on shutdown
 	sugar := logger.Sugar()

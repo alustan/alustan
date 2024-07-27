@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 	"os"
-	"encoding/json"
+	
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/retry"
 	
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -21,8 +22,9 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"  
+	authV1 "k8s.io/api/authentication/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	
-
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	apiclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
@@ -37,6 +39,7 @@ import (
 	"github.com/alustan/alustan/pkg/application/listers"
 	Kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
 	"github.com/alustan/alustan/pkg/installargocd"
+	"github.com/alustan/alustan/pkg/containers"
 )
 
 type Controller struct {
@@ -214,23 +217,31 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("Became leader, starting reconciliation loop")
 
-				// Initialize ArgoCD client
-				argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:8080"
-				argoClientOpts := apiclient.ClientOptions{
-					ServerAddr: argoURL,
-					Insecure:   true,
-				}
+				// Define the namespace and Secret name
+				 namespace := "argocd"
+				 
 				
-				_, argoCancel := context.WithTimeout(ctx, 30*time.Second)
-				defer argoCancel()
 
-				argoClient, err := apiclient.NewClient(&argoClientOpts)
-				if err != nil {
-					c.logger.Fatalf("Failed to create ArgoCD client: %v", err)
-				}
+			saIdentifier, saError := containers.CreateOrUpdateAppServiceAccountAndRoles(c.logger, c.Clientset, namespace)
+			if saError != nil {
+				c.logger.Fatalf("Error creating Service Account and roles: %v", saError)
+				
+			}
+            // Request a token for the Service Account
+			token, err := RequestServiceAccountToken(c.Clientset, namespace, saIdentifier)
+			if err != nil {
+				c.logger.Fatalf("Failed to create Service Account token: %v", err)
+			}
 
-				c.argoClient = argoClient
-				c.logger.Info("Successfully connected to ArgoCD server")
+			// Create the Argo CD client
+			argoClient, err := CreateArgoCDClient(token)
+			if err != nil {
+				c.logger.Fatalf("Failed to create Argo CD client: %v", err)
+			}
+
+			
+             c.argoClient = argoClient
+			 c.logger.Info("Successfully connected to ArgoCD server")
 
 				// Start processing items
 				go c.manageWorkers()
@@ -423,26 +434,7 @@ func (c *Controller) handleSyncRequest(argoClient apiclient.Client, observed *v1
     key := "pat"
     gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
 
-    // Convert Raw fields to strings for better readability
-    sourceValues, err := convertRawValuesToString(observed.Spec.Source.Values)
-    if err != nil {
-        c.logger.Errorf("Failed to convert raw values to string: %v", err)
-        return v1alpha1.AppStatus{State: "Error", Message: fmt.Sprintf("Failed to convert raw values: %v", err)}, err
-    }
-
-    // Log the structured information with source values handled separately
-    c.logger.Infof("Observed Parent Spec: %+v", map[string]interface{}{
-        "Workspace":          observed.Spec.Workspace,
-        "ContainerRegistry": observed.Spec.ContainerRegistry,
-        "Dependencies":       observed.Spec.Dependencies,
-        "Source": map[string]interface{}{
-            "RepoURL":        observed.Spec.Source.RepoURL,
-            "Path":           observed.Spec.Source.Path,
-            "ReleaseName":    observed.Spec.Source.ReleaseName,
-            "TargetRevision": observed.Spec.Source.TargetRevision,
-            "Values":         sourceValues, 
-        },
-    })
+  
 
     commonStatus := v1alpha1.AppStatus{
         State:   "Progressing",
@@ -450,7 +442,7 @@ func (c *Controller) handleSyncRequest(argoClient apiclient.Client, observed *v1
     }
 
     // Add finalizer if not already present
-    err = Kubernetespkg.AddFinalizer(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
+    err := Kubernetespkg.AddFinalizer(c.logger, c.dynClient, observed.ObjectMeta.Name, observed.ObjectMeta.Namespace)
     if err != nil {
         c.logger.Errorf("Failed to add finalizer for %s/%s: %v", observed.ObjectMeta.Namespace, observed.ObjectMeta.Name, err)
         commonStatus.State = "Error"
@@ -526,20 +518,55 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 
 }
 
-
-func convertRawValuesToString(rawValues map[string]runtime.RawExtension) (map[string]string, error) {
-    stringValues := make(map[string]string)
-    for key, rawValue := range rawValues {
-        var value interface{}
-        err := json.Unmarshal(rawValue.Raw, &value)
-        if err != nil {
-            return nil, err
-        }
-        strValue, err := json.Marshal(value)
-        if err != nil {
-            return nil, err
-        }
-        stringValues[key] = string(strValue)
+// RequestServiceAccountToken requests and returns a token for the Service Account
+func RequestServiceAccountToken(clientset kubernetes.Interface, namespace, serviceAccountName string) (string, error) {
+    tokenRequest := &authV1.TokenRequest{
+        Spec: authV1.TokenRequestSpec{
+            ExpirationSeconds: int64Ptr(3600),
+        },
     }
-    return stringValues, nil
+
+    var tokenResponse *authV1.TokenRequest
+    retryErr := retry.OnError(retry.DefaultRetry, func(err error) bool {
+        return true // retry on any error
+    }, func() error {
+        var err error
+        tokenResponse, err = clientset.CoreV1().ServiceAccounts(namespace).CreateToken(context.TODO(), serviceAccountName, tokenRequest, v1.CreateOptions{})
+        return err
+    })
+
+    if retryErr != nil {
+        return "", retryErr
+    }
+
+    return tokenResponse.Status.Token, nil
 }
+
+func int64Ptr(i int64) *int64 { return &i }
+
+// CreateArgoCDClient creates and returns an Argo CD client
+func CreateArgoCDClient(token string) (apiclient.Client, error) {
+    if token == "" {
+        return nil, fmt.Errorf("token is required")
+    }
+    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:8080"
+
+  
+
+    // Create Argo CD client options
+    argoClientOpts := apiclient.ClientOptions{
+        ServerAddr: argoURL,
+        AuthToken:  token,
+        Insecure:   true, 
+    }
+
+    // Create the Argo CD client
+    argoClient, err := apiclient.NewClient(&argoClientOpts)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create Argo CD client: %v", err)
+    }
+
+    return argoClient, nil
+}
+
+
