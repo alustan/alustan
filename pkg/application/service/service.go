@@ -312,7 +312,7 @@ func CreateApplicationSet(
         logger.Errorf("Failed to convert values: %v", err)
         return nil, fmt.Errorf("failed to convert values: %v", err)
     }
-    logger.Debugf("Converted values: %v", convertedValues)
+    logger.Infof("Converted values: %v", convertedValues)
 
     var modifiedValues map[string]interface{}
     var cluster string
@@ -365,7 +365,7 @@ func CreateApplicationSet(
 
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
-    logger.Debugf("Formatted Helm values: %s", helmValues)
+    logger.Infof("Formatted Helm values: %s", helmValues)
 
     argoSecretName := fmt.Sprintf("%s-local-cluster", observed.ObjectMeta.Name)
 
