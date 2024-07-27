@@ -2,46 +2,53 @@
 
 Contributions are what makes the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-## Setting up a development environment
+- fork and clone repo
 
-To get started with the project on your machine, you need to install the following tools:
+- create an issue
+
+- develop in a `feat` branch
+
+- make a pull request
+
+## Requirement
+
+To get started with the project , you need to install the following tools:
 1. Go 1.22+. 
 2. Make. 
 3. Docker. 
 4. Kubernets cluster (local/remote)
 5. kubectl
 
-- Once required tools are installed, fork and clone this repository. `https://github.com/alustan/alustan`.
+## Relevant repositories to fork and clone
 
-- Checkout a feat branch
+- `https://github.com/alustan/alustan`
 
-> `Setup your github workflow secrets`: will be required to push your controller image and helm chart to your OCI registry
+- `https://github.com/alustan/basic-example`
 
-> `make help`: for relevant make commands
-
-
-## Develop
-
-**Terraform controller**
-
-`make build-infra` to ensure you can succesfully build binary locally
-
-- To quickly test functionality locally
-
-`git clone https://github.com/alustan/basic-example.git`
-
-> You can build and push your own image using the **workflow_dispatch** of github action
+- `https://github.com/alustan/web-app-demo`
 
 
-- fetch and untar the helm chart
+> Setup relevant github action workflow secrets `Docker username` `Docker token`
+
+> Run `make help`: for relevant make commands
+
+## Development
+
+- `make build-infra` to ensure you can succesfully build terraform binary locally
+
+- `make build-app` to ensure you can successfully build app binary locally
+
+- Build and push image to your own registry using the provided **github workflow**
+
+- fetch and untar the helm chart 
 
 ```sh
-helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> --untar=true
+helm fetch oci://registry-1.docker.io/<registry name>/alustan-helm --version <version> --untar=true
 ```
 
-**To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
+- generate your `containerRegistrySecret` and add to helm **values** file
 
- - **If using `dockerhub` as OCI registry**
+**To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
 
 ```sh
 rm ~/.docker/config.json
@@ -51,22 +58,22 @@ base64 -w 0 secret.json
 
 ```
 
-- **If using `GHCR` as OCI registry**
+- `helm install controller alustan-helm  --debug`
 
-```sh
-rm ~/.docker/config.json
-docker login ghcr.io -u <YOUR_GITHUB_USERNAME> -p <YOUR_GITHUB_PAT>
-cat ~/.docker/config.json > secret.json
-base64 -w 0 secret.json 
+- `kubectl logs <terraform-controller-pod> -n alustan`
 
-```
-- To get the terraform controller logs
+- `kubectl logs <app-controller-pod> -n alustan`
 
-`kubectl logs <terraform-controller-pod> -n alustan`
+> Ensure argocd server is successfully running
+
+
+**Terraform controller**
+
+- To quickly test functionality locally
 
 - You can apply the manifest below and observe progress 
 
-> replace imageName with your built image
+> replace **imageName** with your built image and relevant **semanticVersion**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -98,13 +105,15 @@ spec:
 
 **App controller**
 
-- To get the app controller logs
+- should have installed `alustan-helm` into your cluster
 
-`kubectl logs <app-controller-pod> -n alustan`
+- Apply `terraform manifest`
 
-> Ensure argocd server is succesfully ruuning
+- If you prefer to run terraform locally `git clone https://github.com/alustan/basic-example.git`, uncomment **alustan namespace** and **config_path** in gitops module and run `./deploy.sh`
 
-- You can apply the manifest below and observe progess 
+- You can apply the manifest below and observe progress 
+
+> replace **imageName** with your built image and relevant **semanticVersion**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -128,7 +137,8 @@ spec:
 
   containerRegistry:
     provider: docker
-    imageName: alustan/web-app-demo
+    imageName: alustan/web-app-demo #build your own image from this repo alustan/web-app-demo since the 
+                               # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
     semanticVersion: ">=1.0.0"
 
 ```

@@ -10,6 +10,7 @@ import (
 	"net/http"
     "bytes"
     "encoding/json"
+	"encoding/base64"
 	
 
 	"go.uber.org/zap"
@@ -221,7 +222,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("Became leader, starting reconciliation loop")
 
-			argoClient, err := authenticateArgocdServer(c.logger,c.Clientset, "https://argo-cd-argocd-server.argocd.svc.cluster.local", "argocd", "argocd-secret", "admin")
+			argoClient, err := authenticateArgocdServer(c.logger,c.Clientset, "https://argocd-server.argocd.svc.cluster.local", "argocd", "argocd-secret", "admin")
 			if  err != nil {
 				c.logger.Fatalf("unable to authenticate argocd server: %v", err)
 			}
@@ -519,39 +520,39 @@ func getAdminPassword(clientset kubernetes.Interface, namespace, secretName stri
     return string(passwordBytes), nil
 }
 
-// Request an admin JWT token from the Argo CD API server
+// getAdminToken requests an admin JWT token from the Argo CD API server
 func getAdminToken(url, username, password string) (string, error) {
-    requestBody := map[string]string{
-        "username": username,
-        "password": password,
-    }
-    jsonBody, err := json.Marshal(requestBody)
-    if err != nil {
-        return "", err
-    }
+	requestBody := map[string]string{
+		"username": username,
+		"password": password,
+	}
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
 
-    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-    if err != nil {
-        return "", err
-    }
-    defer resp.Body.Close()
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        return "", fmt.Errorf("failed to get admin token: %s", resp.Status)
-    }
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get admin token: %s", resp.Status)
+	}
 
-    var result map[string]interface{}
-    decoder := json.NewDecoder(resp.Body)
-    if err := decoder.Decode(&result); err != nil {
-        return "", err
-    }
+	var result map[string]interface{}
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&result); err != nil {
+		return "", err
+	}
 
-    token, ok := result["token"].(string)
-    if !ok {
-        return "", fmt.Errorf("failed to extract token from response")
-    }
+	token, ok := result["token"].(string)
+	if !ok {
+		return "", fmt.Errorf("failed to extract token from response")
+	}
 
-    return token, nil
+	return token, nil
 }
 
 // CreateArgoCDClient creates and returns an Argo CD client
@@ -580,10 +581,18 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
 
 func authenticateArgocdServer(logger *zap.SugaredLogger,clientset kubernetes.Interface, argoURL, namespace, secretName, username string) (apiclient.Client, error) {
     // Retrieve the admin password from the Kubernetes secret
-    password, err := getAdminPassword(clientset, namespace, secretName)
+    encodedPassword, err := getAdminPassword(clientset, namespace, secretName)
     if err != nil {
         return nil, fmt.Errorf("failed to get admin password: %v", err)
     }
+
+	passwordBytes, err := base64.StdEncoding.DecodeString(encodedPassword)
+	if err != nil {
+		return nil, fmt.Errorf("Error decoding password: %v", err)
+		
+	}
+	password := string(passwordBytes)
+
 
     sessionURL := argoURL + "/api/v1/session"
 
