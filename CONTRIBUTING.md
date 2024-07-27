@@ -9,21 +9,64 @@ To get started with the project on your machine, you need to install the followi
 2. Make. 
 3. Docker. 
 4. Kubernets cluster (local/remote)
+5. kubectl
 
-Once required tools are installed, clone or fork this repository. `git clone https://github.com/alustan/alustan.git`.
+- Once required tools are installed, fork and clone this repository. `https://github.com/alustan/alustan`.
 
-`Setup your github workflow secrets`: will be required to push your controller image and helm chart to your OCI registry
+- Checkout a feat branch
 
-`make help`: for relevant make commands
+> `Setup your github workflow secrets`: will be required to push your controller image and helm chart to your OCI registry
+
+> `make help`: for relevant make commands
 
 
-### Testing basic functionalities
-
-To quickly test functionality locally
-
-Use this manifest that references a basic setup
+## Develop
 
 **Terraform controller**
+
+`make build-infra` to ensure you can succesfully build binary locally
+
+- To quickly test functionality locally
+
+`git clone https://github.com/alustan/basic-example.git`
+
+> You can build and push your own image using the **workflow_dispatch** of github action
+
+
+- fetch and untar the helm chart
+
+```sh
+helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> --untar=true
+```
+
+**To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
+
+ - **If using `dockerhub` as OCI registry**
+
+```sh
+rm ~/.docker/config.json
+docker login -u <YOUR_DOCKERHUB_USERNAME> -p <YOUR_DOCKERHUB_PAT>
+cat ~/.docker/config.json > secret.json
+base64 -w 0 secret.json 
+
+```
+
+- **If using `GHCR` as OCI registry**
+
+```sh
+rm ~/.docker/config.json
+docker login ghcr.io -u <YOUR_GITHUB_USERNAME> -p <YOUR_GITHUB_PAT>
+cat ~/.docker/config.json > secret.json
+base64 -w 0 secret.json 
+
+```
+- To get the terraform controller logs
+
+`kubectl logs <terraform-controller-pod> -n alustan`
+
+- You can apply the manifest below and observe progress 
+
+> replace imageName with your built image
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -49,11 +92,19 @@ spec:
     provider: docker
     imageName: alustan/example  #build your own image from this repo alustan/basic-example since the 
                                # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
-    semanticVersion: ">=0.2.0"
+    semanticVersion: ">=0.1.0"
 
 ```
 
 **App controller**
+
+- To get the app controller logs
+
+`kubectl logs <app-controller-pod> -n alustan`
+
+> Ensure argocd server is succesfully ruuning
+
+- You can apply the manifest below and observe progess 
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
