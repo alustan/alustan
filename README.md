@@ -210,8 +210,16 @@ spec:
 - install the helm chart into a kubernetes cluster
 
 ```sh
-helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --version <version>
+helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --version <version> --set containerRegistry.containerRegistrySecret=""
 ```
+- Alternatively
+
+```sh
+helm fetch oci://registry-1.docker.io/<registry name>/alustan-helm --version <version> --untar=true
+```
+
+- `helm install controller alustan-helm  --debug`
+
 
 **To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
 
