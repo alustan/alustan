@@ -7,12 +7,16 @@ import (
 	"strings"
 	"time"
 	"os"
+	"net/http"
+    "bytes"
+    "encoding/json"
 	
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/util/retry"
+	
+	
 	
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -22,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"  
-	authV1 "k8s.io/api/authentication/v1"
+	
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	
 	"k8s.io/client-go/util/workqueue"
@@ -39,7 +43,7 @@ import (
 	"github.com/alustan/alustan/pkg/application/listers"
 	Kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
 	"github.com/alustan/alustan/pkg/installargocd"
-	"github.com/alustan/alustan/pkg/containers"
+	
 )
 
 type Controller struct {
@@ -217,29 +221,11 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("Became leader, starting reconciliation loop")
 
-				// Define the namespace and Secret name
-				 namespace := "argocd"
-				 
-				
-
-			saIdentifier, saError := containers.CreateOrUpdateAppServiceAccountAndRoles(c.logger, c.Clientset, namespace)
-			if saError != nil {
-				c.logger.Fatalf("Error creating Service Account and roles: %v", saError)
-				
+			argoClient, err := authenticateArgocdServer(c.logger,c.Clientset, "https://argo-cd-argocd-server.argocd.svc.cluster.local", "argocd", "argocd-secret", "admin")
+			if  err != nil {
+				c.logger.Fatalf("unable to authenticate argocd server: %v", err)
 			}
-            // Request a token for the Service Account
-			token, err := RequestServiceAccountToken(c.Clientset, namespace, saIdentifier)
-			if err != nil {
-				c.logger.Fatalf("Failed to create Service Account token: %v", err)
-			}
-
-			// Create the Argo CD client
-			argoClient, err := CreateArgoCDClient(token)
-			if err != nil {
-				c.logger.Fatalf("Failed to create Argo CD client: %v", err)
-			}
-
-			
+		
              c.argoClient = argoClient
 			 c.logger.Info("Successfully connected to ArgoCD server")
 
@@ -518,31 +504,55 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 
 }
 
-// RequestServiceAccountToken requests and returns a token for the Service Account
-func RequestServiceAccountToken(clientset kubernetes.Interface, namespace, serviceAccountName string) (string, error) {
-    tokenRequest := &authV1.TokenRequest{
-        Spec: authV1.TokenRequestSpec{
-            ExpirationSeconds: int64Ptr(3600),
-        },
+// Retrieve the admin password from the Kubernetes secret
+func getAdminPassword(clientset kubernetes.Interface, namespace, secretName string) (string, error) {
+    secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, v1.GetOptions{})
+    if err != nil {
+        return "", err
     }
 
-    var tokenResponse *authV1.TokenRequest
-    retryErr := retry.OnError(retry.DefaultRetry, func(err error) bool {
-        return true // retry on any error
-    }, func() error {
-        var err error
-        tokenResponse, err = clientset.CoreV1().ServiceAccounts(namespace).CreateToken(context.TODO(), serviceAccountName, tokenRequest, v1.CreateOptions{})
-        return err
-    })
-
-    if retryErr != nil {
-        return "", retryErr
+    passwordBytes, exists := secret.Data["admin.password"]
+    if !exists {
+        return "", fmt.Errorf("admin password not found in secret")
     }
 
-    return tokenResponse.Status.Token, nil
+    return string(passwordBytes), nil
 }
 
-func int64Ptr(i int64) *int64 { return &i }
+// Request an admin JWT token from the Argo CD API server
+func getAdminToken(url, username, password string) (string, error) {
+    requestBody := map[string]string{
+        "username": username,
+        "password": password,
+    }
+    jsonBody, err := json.Marshal(requestBody)
+    if err != nil {
+        return "", err
+    }
+
+    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return "", fmt.Errorf("failed to get admin token: %s", resp.Status)
+    }
+
+    var result map[string]interface{}
+    decoder := json.NewDecoder(resp.Body)
+    if err := decoder.Decode(&result); err != nil {
+        return "", err
+    }
+
+    token, ok := result["token"].(string)
+    if !ok {
+        return "", fmt.Errorf("failed to extract token from response")
+    }
+
+    return token, nil
+}
 
 // CreateArgoCDClient creates and returns an Argo CD client
 func CreateArgoCDClient(token string) (apiclient.Client, error) {
@@ -557,7 +567,6 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
     argoClientOpts := apiclient.ClientOptions{
         ServerAddr: argoURL,
         AuthToken:  token,
-        Insecure:   true,  
     }
 
     // Create the Argo CD client
@@ -567,4 +576,38 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
     }
 
     return argoClient, nil
+}
+
+func authenticateArgocdServer(logger *zap.SugaredLogger,clientset kubernetes.Interface, argoURL, namespace, secretName, username string) (apiclient.Client, error) {
+    // Retrieve the admin password from the Kubernetes secret
+    password, err := getAdminPassword(clientset, namespace, secretName)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get admin password: %v", err)
+    }
+
+    sessionURL := argoURL + "/api/v1/session"
+
+    // Refresh the token periodically
+    ticker := time.NewTicker(23 * time.Hour)
+    defer ticker.Stop()
+
+    for {
+        adminToken, err := getAdminToken(sessionURL, username, password)
+        if err != nil {
+            return nil, fmt.Errorf("failed to get admin token: %v", err)
+        }
+
+        logger.Info("Admin token refreshed")
+
+        argoClient, err := CreateArgoCDClient(adminToken)
+        if err != nil {
+            return nil, fmt.Errorf("failed to create Argo CD client: %v", err)
+        }
+
+        logger.Infof("Successfully created Argo CD client: %v\n", argoClient)
+
+        return argoClient, nil
+
+        <-ticker.C
+    }
 }
