@@ -30,11 +30,11 @@ func RemoveString(slice []string, str string) []string {
 
 
 func GetUniqueID() string {
-    podName := os.Getenv("POD_NAME")
-    podNamespace := os.Getenv("POD_NAMESPACE")
-    if podName == "" || podNamespace == "" {
-        fmt.Printf("POD_NAME or POD_NAMESPACE environment variables are not set. POD_NAME: %s, POD_NAMESPACE: %s\n", podName, podNamespace)
+    podName := os.Getenv("HOSTNAME")
+    
+    if podName == "" {
+        fmt.Printf("HOSTNAME environment variable is not set. POD_NAME: %s", podName)
     }
-    return fmt.Sprintf("%s_%s", podNamespace, podName)
+    return podName
 }
 
