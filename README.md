@@ -217,6 +217,7 @@ helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --v
 ```sh
 helm fetch oci://registry-1.docker.io/<registry name>/alustan-helm --version <version> --untar=true
 ```
+- Update helm **values** file
 
 - `helm install controller alustan-helm  --debug`
 

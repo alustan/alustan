@@ -2,11 +2,8 @@
 package util
 
 import (
-	
-	
-	"github.com/google/uuid"
-
-
+	"fmt"
+	"os"
 )
 
 
@@ -33,8 +30,8 @@ func RemoveString(slice []string, str string) []string {
 
 
 func GetUniqueID() string {
-	return uuid.New().String()
+	podName := os.Getenv("POD_NAME")
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	return fmt.Sprintf("%s_%s", podNamespace, podName)
 }
-
-
 
