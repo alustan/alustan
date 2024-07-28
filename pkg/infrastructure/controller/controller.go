@@ -196,7 +196,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
         RetryPeriod:   5 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				c.logger.Infof("Pod %s is leading", id)
+				c.logger.Info("got leadership")
 				// Start processing items
 				go c.manageWorkers()
 			},

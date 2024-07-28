@@ -2,72 +2,53 @@ package kubernetes
 
 import (
 	"context"
-    "fmt"
-	
-	"k8s.io/client-go/kubernetes"
+	"fmt"
+
+	clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
+	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"go.uber.org/zap"
-	
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	corev1 "k8s.io/api/core/v1"
 )
 
-func CreateOrUpdateArgoSecret(logger *zap.SugaredLogger, clientset kubernetes.Interface, secretName, environment string) error {
-	namespace := "argocd"
-	labelSelector := "argocd.argoproj.io/secret-type=cluster,!alustan.io/secret-type"
-
-	secrets, err := clientset.CoreV1().Secrets(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
+func CreateOrUpdateArgoCluster(
+	logger *zap.SugaredLogger,
+	clusterClient clusterpkg.ClusterServiceClient,
+	clusterName, environment string,
+) error {
+	// List existing clusters
+	clusters, err := clusterClient.List(context.Background(), &clusterpkg.ClusterQuery{})
 	if err != nil {
-		return fmt.Errorf("failed to list secrets: %w", err)
+		return fmt.Errorf("failed to list clusters: %w", err)
 	}
 
-	if len(secrets.Items) > 0 {
-		logger.Info("Found existing secret with required labels, returning without creating a new secret.")
+	// Check if any cluster exists
+	if len(clusters.Items) > 0 {
+		logger.Info("Found existing clusters, returning without creating a new cluster.")
 		return nil
 	}
 
-	_, err = clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
-	if err == nil {
-		logger.Infof("Secret %s already exists, deleting it.\n", secretName)
-		err = clientset.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to delete existing secret: %w", err)
-		}
-	} else {
-		logger.Infof("Secret %s not found, creating a new one.\n", secretName)
-	}
-
-	secretData := map[string]string{
-		"name":   secretName,
-		"server": "https://kubernetes.default.svc",
-		"config": `{
-			"tlsClientConfig": {
-				"insecure": false
-			}
-		}`,
-	}
-
-	secretObj := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
+	// Define the new cluster configuration
+	newCluster := &clusterpkg.ClusterCreateRequest{
+		Cluster: &appv1alpha1.Cluster{
+			Name:   clusterName,
+			Server: "https://kubernetes.default.svc",
+			Config: appv1alpha1.ClusterConfig{
+				TLSClientConfig: appv1alpha1.TLSClientConfig{
+					Insecure: false,
+				},
+			},
 			Labels: map[string]string{
-				"argocd.argoproj.io/secret-type": "cluster",
-				"alustan.io/secret-type": "cluster",
-				"environment":                    environment,
+				"environment": environment,
 			},
 		},
-		StringData: secretData,
-		Type:       corev1.SecretTypeOpaque,
 	}
 
-	_, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secretObj, metav1.CreateOptions{})
+	// Create the new cluster
+	ctx := context.Background()
+	_, err = clusterClient.Create(ctx, newCluster)
 	if err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
+		return fmt.Errorf("failed to create cluster: %w", err)
 	}
 
-	logger.Infof("Secret %s created successfully.\n", secretName)
+	logger.Infof("Cluster %s created successfully.\n", newCluster.Cluster.Name)
 	return nil
 }
-

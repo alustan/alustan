@@ -11,11 +11,11 @@ import (
     "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"k8s.io/apimachinery/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
     applicationset "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
+    clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -35,8 +35,9 @@ import (
 func RunService(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
+    clusterClient clusterpkg.ClusterServiceClient,
     dynamicClient dynamic.Interface,
-    argoClient apiclient.Client,
+    appSetClient   applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
     secretName, key string,
     finalizing bool,
@@ -46,7 +47,7 @@ func RunService(
 
     if finalizing {
         logger.Info("Attempting to delete application")
-        status, err := DeleteApplicationSet(logger, clientset, dynamicClient, argoClient, observed)
+        status, err := DeleteApplicationSet(logger, clientset, dynamicClient, appSetClient, observed)
         if err != nil {
             return status, fmt.Errorf("error deleting ApplicationSet: %v", err)
         }
@@ -66,13 +67,13 @@ func RunService(
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
-    err := WaitForAllDependenciesHealth(logger, argoClient, dependencies, namespace, retryInterval, timeout)
+    err := WaitForAllDependenciesHealth(logger, appSetClient, dependencies, namespace, retryInterval, timeout)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err), err
     }
 
     // Proceed with creating the ApplicationSet
-    appStatus, err := CreateApplicationSet(logger, clientset, argoClient, observed, secretName, key)
+    appStatus, err := CreateApplicationSet(logger, clientset, clusterClient, appSetClient, observed, secretName, key)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
@@ -278,7 +279,8 @@ func convertRawExtensionsToInterface(values map[string]runtime.RawExtension) (ma
 func CreateApplicationSet(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
-    argoClient apiclient.Client,
+    clusterClient clusterpkg.ClusterServiceClient,
+    appSetClient   applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
     secretName, key string,
 ) (*appv1alpha1.ApplicationSetStatus, error) {
@@ -367,9 +369,9 @@ func CreateApplicationSet(
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
     logger.Infof("Formatted Helm values: %s", helmValues)
 
-    argoSecretName := fmt.Sprintf("%s-local-cluster", observed.ObjectMeta.Name)
+    argoSecretName := "in-cluster"
 
-    err = kubernetespkg.CreateOrUpdateArgoSecret(logger, clientset, argoSecretName, cluster)
+    err = kubernetespkg.CreateOrUpdateArgoCluster(logger, clusterClient, argoSecretName, cluster)
     if err != nil {
         logger.Errorf("Failed to create or update ArgoCD secret: %v", err)
         return nil, err
@@ -492,14 +494,8 @@ func CreateApplicationSet(
     var createdAppset *appv1alpha1.ApplicationSet
 
     err = retry.OnError(retry.DefaultRetry, errors.IsInternalError, func() error {
-        closer, applicationSetClient, err := argoClient.NewApplicationSetClient()
-        if err != nil {
-            logger.Errorf("Failed to create ArgoCD ApplicationSet client: %v", err)
-            return err
-        }
-        defer closer.Close()
-
-        createdAppset, err = applicationSetClient.Create(context.TODO(), &applicationset.ApplicationSetCreateRequest{
+      
+    createdAppset, err = appSetClient.Create(context.Background(), &applicationset.ApplicationSetCreateRequest{
             Applicationset: appSet,
         })
         return err
@@ -517,7 +513,7 @@ func CreateApplicationSet(
 
 
 
-func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, argoClient apiclient.Client, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
+func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interface, dynamicClient dynamic.Interface, appSetClient applicationset.ApplicationSetServiceClient, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
 
 	appSetName := observed.ObjectMeta.Name
 
@@ -540,13 +536,8 @@ func DeleteApplicationSet(logger *zap.SugaredLogger, clientset kubernetes.Interf
 
 	// Retry mechanism to delete ApplicationSet
 	err = retry.OnError(retry.DefaultRetry, errors.IsInternalError, func() error {
-		closer, applicationSetClient, err := argoClient.NewApplicationSetClient()
-		if err != nil {
-			return err
-		}
-		defer closer.Close()
-
-		_, err = applicationSetClient.Delete(context.TODO(), &applicationset.ApplicationSetDeleteRequest{
+		
+     _, err = appSetClient.Delete(context.Background(), &applicationset.ApplicationSetDeleteRequest{
 			Name: appSetName,  
 		})
 		return err
@@ -614,18 +605,9 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
 }
 
 
-func CheckApplicationSetHealth(logger *zap.SugaredLogger, argoClient apiclient.Client, appSetName, namespace string) (bool, error) {
-	// Get the application set client and handle errors appropriately
-	closer, appSetClient, err := argoClient.NewApplicationSetClient()
-	if err != nil {
-		logger.Error(err.Error())
-		return false, err
-	}
-	// Ensure the closer is closed when the function exits
-	defer closer.Close()
-
+func CheckApplicationSetHealth(logger *zap.SugaredLogger, appSetClient applicationset.ApplicationSetServiceClient, appSetName, namespace string) (bool, error) {
 	// Retrieve the ApplicationSet
-	appSet, err := appSetClient.Get(context.TODO(), &applicationset.ApplicationSetGetQuery{
+	appSet, err := appSetClient.Get(context.Background(), &applicationset.ApplicationSetGetQuery{
 		Name:      appSetName,
 		AppsetNamespace: namespace,
 	})
@@ -667,7 +649,7 @@ func ExtractDependencies(observed *v1alpha1.App) []string {
 
 func WaitForAllDependenciesHealth(
     logger *zap.SugaredLogger, 
-    argoClient apiclient.Client, 
+    appSetClient   applicationset.ApplicationSetServiceClient,
     dependencies []string, 
     namespace string, 
     retryInterval, timeout time.Duration,
@@ -688,7 +670,7 @@ func WaitForAllDependenciesHealth(
         case <-ticker.C: // Execute every retryInterval
             allHealthy := true
             for dep := range dependencyStatus {
-                healthy, err := CheckApplicationSetHealth(logger, argoClient, dep, namespace)
+                healthy, err := CheckApplicationSetHealth(logger, appSetClient, dep, namespace)
                 if err != nil {
                     return err // Return if an error occurs
                 }
