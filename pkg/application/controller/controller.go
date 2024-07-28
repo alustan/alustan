@@ -11,7 +11,7 @@ import (
     "crypto/tls"
     "encoding/json"
     "net/http"
-   
+	"io"
 
 	
 	
@@ -550,54 +550,57 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
 
 // GenerateAuthToken fetches an authentication token from Argo CD
 func GenerateAuthToken(password string) (string, error) {
-    // Define the Argo CD login URL and request payload
-    argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
-    payload := map[string]string{
-        "username": "admin",
-        "password": password, 
-    }
-    payloadBytes, _ := json.Marshal(payload)
+	// Define the Argo CD login URL and request payload
+	argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
+	payload := map[string]string{
+		"username": "admin",
+		"password": password,
+	}
+	payloadBytes, _ := json.Marshal(payload)
 
-    // Create a custom Transport that skips TLS verification
-    transport := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-    }
+	// Create a custom Transport that skips TLS verification
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 
-    // Create a custom HTTP client with the custom Transport
-    client := &http.Client{
-        Transport: transport,
-        Timeout:   10 * time.Second,
-    }
+	// Create a custom HTTP client with the custom Transport
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
 
-    // Perform the HTTP POST request to obtain the token
-    req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
-    if err != nil {
-        return "", fmt.Errorf("failed to create request: %v", err)
-    }
-    req.Header.Set("Content-Type", "application/json")
+	// Perform the HTTP POST request to obtain the token
+	req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-    resp, err := client.Do(req)
-    if err != nil {
-        return "", fmt.Errorf("failed to send request: %v", err)
-    }
-    defer resp.Body.Close()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        return "", fmt.Errorf("authentication failed: %v", resp.Status)
-    }
+	if resp.StatusCode != http.StatusOK {
+		// Read response body for more detailed error message
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
+	}
 
-    var response map[string]interface{}
-    if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-        return "", fmt.Errorf("failed to decode response: %v", err)
-    }
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("failed to decode response: %v", err)
+	}
 
-    token, ok := response["token"].(string)
-    if !ok {
-        return "", fmt.Errorf("token not found in response")
-    }
+	token, ok := response["token"].(string)
+	if !ok {
+		return "", fmt.Errorf("token not found in response")
+	}
 
-    return token, nil
+	return token, nil
 }
+
 
 // GetAuthToken retrieves the current token, generating a new one if necessary
 func GetAuthToken(password string) (string, error) {
