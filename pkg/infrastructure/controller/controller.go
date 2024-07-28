@@ -191,17 +191,17 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 
 	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: 15 * time.Second,
-		RenewDeadline: 10 * time.Second,
-		RetryPeriod:   2 * time.Second,
+		LeaseDuration: 30 * time.Second,
+        RenewDeadline: 20 * time.Second,
+        RetryPeriod:   5 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				c.logger.Info("Became leader, starting reconciliation loop")
+				c.logger.Infof("Pod %s is leading", id)
 				// Start processing items
 				go c.manageWorkers()
 			},
 			OnStoppedLeading: func() {
-				c.logger.Warn("Lost leadership, stopping reconciliation loop")
+				c.logger.Infof("Pod %s lost leadership", id)
 				// Stop processing items
 				close(c.workerStopCh)  // Stop all individual runWorker functions
 				close(c.managerStopCh) // Stop the manageWorkers function
@@ -209,7 +209,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			},
 			OnNewLeader: func(identity string) {
 				if identity == id {
-					c.logger.Info("Still the leader")
+					c.logger.Infof("Pod %s is still the leader", id)
 				} else {
 					c.logger.Infof("New leader elected: %s", identity)
 				}
