@@ -201,16 +201,24 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				go c.manageWorkers()
 			},
 			OnStoppedLeading: func() {
-				c.logger.Info("Lost leadership, stopping reconciliation loop")
+				c.logger.Warn("Lost leadership, stopping reconciliation loop")
 				// Stop processing items
 				close(c.workerStopCh)  // Stop all individual runWorker functions
 				close(c.managerStopCh) // Stop the manageWorkers function
-                c.workqueue.ShutDown()
+				c.workqueue.ShutDown()
+			},
+			OnNewLeader: func(identity string) {
+				if identity == id {
+					c.logger.Info("Still the leader")
+				} else {
+					c.logger.Infof("New leader elected: %s", identity)
+				}
 			},
 		},
 		ReleaseOnCancel: true,
 	})
 }
+
 
 func (c *Controller) manageWorkers() {
 	for {

@@ -10,10 +10,9 @@ import (
 	"net/http"
     "bytes"
     "encoding/json"
-	"encoding/base64"
 	
-
-	"go.uber.org/zap"
+	
+    "go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	
@@ -239,6 +238,13 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				close(c.workerStopCh)  // Stop all individual runWorker functions
 				close(c.managerStopCh) // Stop the manageWorkers function
 				c.workqueue.ShutDown()
+			},
+			OnNewLeader: func(identity string) {
+				if identity == id {
+					c.logger.Info("Still the leader")
+				} else {
+					c.logger.Infof("New leader elected: %s", identity)
+				}
 			},
 		},
 		ReleaseOnCancel: true,
@@ -579,20 +585,14 @@ func CreateArgoCDClient(token string) (apiclient.Client, error) {
     return argoClient, nil
 }
 
-func authenticateArgocdServer(logger *zap.SugaredLogger,clientset kubernetes.Interface, argoURL, namespace, secretName, username string) (apiclient.Client, error) {
+func authenticateArgocdServer(logger *zap.SugaredLogger, clientset kubernetes.Interface, argoURL, namespace, secretName, username string) (apiclient.Client, error) {
     // Retrieve the admin password from the Kubernetes secret
-    encodedPassword, err := getAdminPassword(clientset, namespace, secretName)
+    password, err := getAdminPassword(clientset, namespace, secretName)
     if err != nil {
         return nil, fmt.Errorf("failed to get admin password: %v", err)
     }
 
-	passwordBytes, err := base64.StdEncoding.DecodeString(encodedPassword)
-	if err != nil {
-		return nil, fmt.Errorf("Error decoding password: %v", err)
-		
-	}
-	password := string(passwordBytes)
-
+    logger.Infof("Password retrieved: %s", password)
 
     sessionURL := argoURL + "/api/v1/session"
 
@@ -620,3 +620,4 @@ func authenticateArgocdServer(logger *zap.SugaredLogger,clientset kubernetes.Int
         <-ticker.C
     }
 }
+
