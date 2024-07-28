@@ -221,7 +221,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Infof("Pod %s is leading", id)
 
-			argoClient, err := authenticateArgocdServer(c.logger,c.Clientset, "https://argocd-server.argocd.svc.cluster.local:443", "argocd", "argocd-secret", "admin")
+			argoClient, err := authenticateArgocdServer(c.logger,c.Clientset, "https://argo-cd-argocd-server.argocd.svc.cluster.local:443", "argocd", "argocd-secret", "admin")
 			if  err != nil {
 				c.logger.Fatalf("unable to authenticate argocd server: %v", err)
 			}
