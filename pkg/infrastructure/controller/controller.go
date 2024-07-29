@@ -197,6 +197,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("got leadership")
+				c.logger.Info("Terraform controller succesfuly instantiated!!!")
 				// Start processing items
 				go c.manageWorkers()
 			},
