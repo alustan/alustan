@@ -573,8 +573,6 @@ func GenerateAuthToken(password string) (string, error) {
     }
     payloadBytes, _ := json.Marshal(payload)
 
-    // Print the payload for debugging
-    fmt.Printf("Payload: %s\n", string(payloadBytes))
 
     client := &http.Client{
         Timeout: 30 * time.Second,
@@ -594,8 +592,7 @@ func GenerateAuthToken(password string) (string, error) {
 
     if resp.StatusCode != http.StatusOK {
         bodyBytes, _ := io.ReadAll(resp.Body)
-        fmt.Printf("Received response: %s\n", string(bodyBytes))
-        return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
+      return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
     }
 
     var response map[string]interface{}
@@ -605,11 +602,18 @@ func GenerateAuthToken(password string) (string, error) {
 
     token, ok := response["token"].(string)
     if !ok {
+        // Log the full response for debugging
+        responseBytes, _ := json.Marshal(response)
+        fmt.Printf("Full response: %s\n", string(responseBytes))
         return "", fmt.Errorf("token not found in response")
     }
 
+    // Log the generated token
+    fmt.Printf("Generated token: %s\n", token)
+
     return token, nil
 }
+
 
 
 
@@ -659,12 +663,13 @@ func scheduleTokenRefresh(c *Controller, password string) {
 // CreateArgoCDClient creates and returns an Argo CD client
 func CreateArgoCDClient(authToken string) (apiclient.Client, error) {
     // Use the correct port for HTTPS
-    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local:443"
+    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local"
 
     // Create Argo CD client options with the token
     argoClientOpts := apiclient.ClientOptions{
         ServerAddr: argoURL,
         AuthToken:  authToken,
+		PlainText: true,
     }
 
     // Create the Argo CD client
