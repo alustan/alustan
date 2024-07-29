@@ -257,7 +257,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
              c.logger.Infof("Successfully created ApplicationSet client")
 			 c.logger.Infof("Successfully created Cluster client")
 			 c.logger.Infof("Successfully created Repo client")
-			 c.logger.Info("App controller succesfuly instantiated!!!")
+			 c.logger.Info("App controller successfuly instantiated!!!")
 
 				// Start processing items
 				go c.manageWorkers()
@@ -708,7 +708,7 @@ func refreshClients(c *Controller, newToken string) error {
         return fmt.Errorf("failed to store SSH repo secret: %v", err)
     }
 
-    appSetCloser, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
+    _, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
     if err != nil {
         conn.Close()  // Ensure to close the previous connection if error occurs
         repoCloser.Close()  // Ensure to close the previous closer if error occurs
@@ -716,10 +716,6 @@ func refreshClients(c *Controller, newToken string) error {
     }
     c.appSetClient = newAppSetClient
 
-    // Explicitly close previous connections and closers now that the clients are assigned
-    conn.Close()
-    repoCloser.Close()
-    appSetCloser.Close()
 
     return nil
 }
