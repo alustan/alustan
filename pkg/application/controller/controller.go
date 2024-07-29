@@ -39,6 +39,8 @@ import (
 	
 	applicationsetpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
 	clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
+	repocredspkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/repocreds"
+	
 
 	"github.com/alustan/alustan/pkg/application/registry"
 	"github.com/alustan/alustan/api/app/v1alpha1"
@@ -74,6 +76,7 @@ type Controller struct {
 	argoClient   apiclient.Client
 	appSetClient   applicationsetpkg.ApplicationSetServiceClient
 	clusterClient  clusterpkg.ClusterServiceClient
+	repoCredsClient repocredspkg.RepoCredsServiceClient
 	
 }
 
@@ -85,7 +88,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 		logger.Fatal(argoerr.Error())
 	}
 
-    ctrl := &Controller{
+	ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
 		syncInterval:    syncInterval,
@@ -254,6 +257,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			 c.logger.Infof("Successfully created ArgoCD client: %v\n", c.argoClient)
              c.logger.Infof("Successfully created ApplicationSet client: %v\n", c.appSetClient)
 			 c.logger.Infof("Successfully created Cluster client: %v\n", c.clusterClient)
+			 c.logger.Infof("Successfully created Repo client: %v\n", c.repoCredsClient)
 
 				// Start processing items
 				go c.manageWorkers()
@@ -554,11 +558,11 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
     }
 
     rawBase64Password := string(passwordBytes)
-    fmt.Printf("Raw base64 password: %s", rawBase64Password)
+    
 
     // Trim spaces and check for extraneous characters
     trimmedPassword := strings.TrimSpace(rawBase64Password)
-    fmt.Printf("Trimmed base64 password: %s", trimmedPassword)
+  
 
     decodedPassword, err := base64.StdEncoding.DecodeString(trimmedPassword)
     if err != nil {
@@ -571,7 +575,6 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
 
 // GenerateAuthToken fetches an authentication token from Argo CD
 func GenerateAuthToken(password string) (string, error) {
-	// Define the Argo CD login URL and request payload
 	argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
 	payload := map[string]string{
 		"username": "admin",
@@ -579,23 +582,22 @@ func GenerateAuthToken(password string) (string, error) {
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	// Create a custom Transport that skips TLS verification
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	// Create a custom HTTP client with the custom Transport
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   30 * time.Second,
 	}
 
-	// Perform the HTTP POST request to obtain the token
 	req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	fmt.Printf("Sending request to %s with payload: %s\n", argoURL, string(payloadBytes))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -604,8 +606,8 @@ func GenerateAuthToken(password string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Read response body for more detailed error message
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("Received response: %s\n", string(bodyBytes))
 		return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
 	}
 
@@ -621,7 +623,6 @@ func GenerateAuthToken(password string) (string, error) {
 
 	return token, nil
 }
-
 
 
 // GetAuthToken retrieves the current token, generating a new one if necessary
@@ -704,15 +705,58 @@ func refreshClients(c *Controller, newToken string) error {
     }
     defer conn.Close()
 
+	closer, newRepoCredsClient, err := newArgoClient.NewRepoCredsClient()
+    if err != nil {
+        return fmt.Errorf("failed to create repo creds client: %v", err)
+    }
+    defer closer.Close()
+
+	err = storeSSHRepoSecret(c,newRepoCredsClient)
+    if err != nil {
+        return fmt.Errorf("Failed to store SSH repo secret: %v", err)
+    }
+
     closer, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
     if err != nil {
         return fmt.Errorf("failed to create ApplicationSet client: %v", err)
     }
     defer closer.Close()
 
-    // Update the clients in the Controller struct
+	// Update the clients in the Controller struct
     c.appSetClient = newAppSetClient
     c.clusterClient = newClusterClient
+	c.repoCredsClient = newRepoCredsClient
 
+    return nil
+}
+
+// storeSSHRepoSecret stores the SSH repo secret retrieved from an environment variable.
+func storeSSHRepoSecret(c *Controller, repoCredsClient repocredspkg.RepoCredsServiceClient) error {
+    // Retrieve the secret from the environment variable
+    secretValue := os.Getenv("GIT_SSH_SECRET")
+    repoURL := os.Getenv("REPO_URL")
+    if secretValue == "" {
+        return nil
+    }
+
+    // Trim any leading and trailing spaces
+    trimmedSecret := strings.TrimSpace(secretValue)
+
+    // Create the request to store the SSH repo secret
+    credsRequest := &repocredspkg.RepoCredsCreateRequest{
+        Creds: &appv1alpha1.RepoCreds{
+            Type:          "git",
+            URL:           repoURL,
+            SSHPrivateKey: trimmedSecret,
+        },
+    }
+
+    // Store the SSH repo secret using the repo creds client
+    _, err := repoCredsClient.CreateRepositoryCredentials(context.Background(), credsRequest)
+    if err != nil {
+        return fmt.Errorf("failed to store SSH repo secret: %v", err)
+    }
+
+    c.logger.Info("SSH repo secret stored successfully")
     return nil
 }
