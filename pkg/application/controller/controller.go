@@ -253,10 +253,11 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 				 c.logger.Fatalf("Failed to refresh clients: %v", err)
 			 }
 		
-			 c.logger.Infof("Successfully created ArgoCD client: %v\n", c.argoClient)
-             c.logger.Infof("Successfully created ApplicationSet client: %v\n", c.appSetClient)
-			 c.logger.Infof("Successfully created Cluster client: %v\n", c.clusterClient)
-			 c.logger.Infof("Successfully created Repo client: %v\n", c.repoCredsClient)
+			 c.logger.Info("Successfully created ArgoCD client")
+             c.logger.Infof("Successfully created ApplicationSet client")
+			 c.logger.Infof("Successfully created Cluster client")
+			 c.logger.Infof("Successfully created Repo client")
+			 c.logger.Info("App controller succesfuly instantiated!!!")
 
 				// Start processing items
 				go c.manageWorkers()
@@ -602,14 +603,10 @@ func GenerateAuthToken(password string) (string, error) {
 
     token, ok := response["token"].(string)
     if !ok {
-        // Log the full response for debugging
-        responseBytes, _ := json.Marshal(response)
-        fmt.Printf("Full response: %s\n", string(responseBytes))
-        return "", fmt.Errorf("token not found in response")
+       
+      return "", fmt.Errorf("token not found in response")
     }
 
-    // Log the generated token
-    fmt.Printf("Generated token: %s\n", token)
 
     return token, nil
 }
