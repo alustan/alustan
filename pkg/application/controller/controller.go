@@ -541,33 +541,38 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 
 }
 
-// Retrieve the base64-encoded admin password from the Kubernetes secret and decode it
-
 func getAdminPassword(clientset kubernetes.Interface) (string, error) {
     namespace := "argocd"
     secretName := "argocd-initial-admin-secret"
 
+    // Retrieve the secret from Kubernetes
     secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
     if err != nil {
         return "", fmt.Errorf("failed to get secret: %v", err)
     }
 
+    // Ensure the password field exists
     passwordBytes, exists := secret.Data["password"]
     if !exists {
         return "", fmt.Errorf("password not found in secret")
     }
 
+    // Print the raw base64-encoded password for debugging
     rawBase64Password := string(passwordBytes)
-    
+    fmt.Printf("Raw base64-encoded password: %s\n", rawBase64Password)
 
     // Trim spaces and check for extraneous characters
     trimmedPassword := strings.TrimSpace(rawBase64Password)
-  
+    fmt.Printf("Trimmed base64-encoded password: %s\n", trimmedPassword)
 
+    // Decode the base64-encoded password
     decodedPassword, err := base64.StdEncoding.DecodeString(trimmedPassword)
     if err != nil {
         return "", fmt.Errorf("failed to decode password: %v", err)
     }
+
+    // Print the decoded password for debugging
+    fmt.Printf("Decoded password: %s\n", string(decodedPassword))
 
     return string(decodedPassword), nil
 }
@@ -575,54 +580,56 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
 
 // GenerateAuthToken fetches an authentication token from Argo CD
 func GenerateAuthToken(password string) (string, error) {
-	argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
-	payload := map[string]string{
-		"username": "admin",
-		"password": password,
-	}
-	payloadBytes, _ := json.Marshal(payload)
+    argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
+    payload := map[string]string{
+        "username": "admin",
+        "password": password,
+    }
+    payloadBytes, _ := json.Marshal(payload)
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
+    // Print the payload for debugging
+    fmt.Printf("Payload: %s\n", string(payloadBytes))
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
-	}
+    transport := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
 
-	req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+    client := &http.Client{
+        Transport: transport,
+        Timeout:   30 * time.Second,
+    }
 
-	fmt.Printf("Sending request to %s with payload: %s\n", argoURL, string(payloadBytes))
+    req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
+    if err != nil {
+        return "", fmt.Errorf("failed to create request: %v", err)
+    }
+    req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %v", err)
-	}
-	defer resp.Body.Close()
+    resp, err := client.Do(req)
+    if err != nil {
+        return "", fmt.Errorf("failed to send request: %v", err)
+    }
+    defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Printf("Received response: %s\n", string(bodyBytes))
-		return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
-	}
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        fmt.Printf("Received response: %s\n", string(bodyBytes))
+        return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
+    }
 
-	var response map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %v", err)
-	}
+    var response map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+        return "", fmt.Errorf("failed to decode response: %v", err)
+    }
 
-	token, ok := response["token"].(string)
-	if !ok {
-		return "", fmt.Errorf("token not found in response")
-	}
+    token, ok := response["token"].(string)
+    if !ok {
+        return "", fmt.Errorf("token not found in response")
+    }
 
-	return token, nil
+    return token, nil
 }
+
 
 
 // GetAuthToken retrieves the current token, generating a new one if necessary
