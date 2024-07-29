@@ -678,7 +678,6 @@ func CreateArgoCDClient(authToken string) (apiclient.Client, error) {
     return argoClient, nil
 }
 
-// refreshClients updates the Argo CD clients with the new token and updates the Controller struct
 func refreshClients(c *Controller, newToken string) error {
     // Update the Argo CD client with the new token
     newArgoClient, err := CreateArgoCDClient(newToken)
@@ -693,32 +692,38 @@ func refreshClients(c *Controller, newToken string) error {
     if err != nil {
         return fmt.Errorf("failed to create ArgoCD cluster client: %v", err)
     }
-    defer conn.Close()
+    c.clusterClient = newClusterClient
 
-	closer, newRepoCredsClient, err := newArgoClient.NewRepoCredsClient()
+    repoCloser, newRepoCredsClient, err := newArgoClient.NewRepoCredsClient()
     if err != nil {
+        conn.Close() // Ensure to close the previous connection if error occurs
         return fmt.Errorf("failed to create repo creds client: %v", err)
     }
-    defer closer.Close()
+    c.repoCredsClient = newRepoCredsClient
 
-	err = storeSSHRepoSecret(c,newRepoCredsClient)
+    err = storeSSHRepoSecret(c, newRepoCredsClient)
     if err != nil {
-        return fmt.Errorf("Failed to store SSH repo secret: %v", err)
+        conn.Close()  // Ensure to close the previous connection if error occurs
+        repoCloser.Close()  // Ensure to close the previous closer if error occurs
+        return fmt.Errorf("failed to store SSH repo secret: %v", err)
     }
 
-    closer, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
+    appSetCloser, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
     if err != nil {
+        conn.Close()  // Ensure to close the previous connection if error occurs
+        repoCloser.Close()  // Ensure to close the previous closer if error occurs
         return fmt.Errorf("failed to create ApplicationSet client: %v", err)
     }
-    defer closer.Close()
-
-	// Update the clients in the Controller struct
     c.appSetClient = newAppSetClient
-    c.clusterClient = newClusterClient
-	c.repoCredsClient = newRepoCredsClient
+
+    // Explicitly close previous connections and closers now that the clients are assigned
+    conn.Close()
+    repoCloser.Close()
+    appSetCloser.Close()
 
     return nil
 }
+
 
 // storeSSHRepoSecret stores the SSH repo secret retrieved from an environment variable.
 func storeSSHRepoSecret(c *Controller, repoCredsClient repocredspkg.RepoCredsServiceClient) error {

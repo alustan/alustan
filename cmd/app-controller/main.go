@@ -15,7 +15,7 @@ import (
 	"github.com/alustan/alustan/api/app/v1alpha1"
 	"go.uber.org/zap"
 	
-    "google.golang.org/grpc/grpclog"
+    // "google.golang.org/grpc/grpclog"
     
 )
 
@@ -39,7 +39,7 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 
 	// Set gRPC logger to standard error with high verbosity
-	grpclog.SetLoggerV2(grpclog.NewLoggerV2WithVerbosity(os.Stderr, os.Stderr, os.Stderr, 99))
+	// grpclog.SetLoggerV2(grpclog.NewLoggerV2WithVerbosity(os.Stderr, os.Stderr, os.Stderr, 99))
 	
   // Initialize logger
 	logger, err := zap.NewProduction()
