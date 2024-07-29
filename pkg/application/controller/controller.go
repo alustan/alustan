@@ -8,7 +8,7 @@ import (
 	"time"
 	"os"
 	"bytes"
-    "crypto/tls"
+   
     "encoding/json"
     "net/http"
 	"io"
@@ -558,16 +558,15 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
 
     // Print the raw password for debugging
     password := string(passwordBytes)
-    fmt.Printf("Raw password: %s\n", password)
+   
 
 
     return password, nil
 }
 
 
-// GenerateAuthToken fetches an authentication token from Argo CD
 func GenerateAuthToken(password string) (string, error) {
-    argoURL := "https://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
+    argoURL := "http://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
     payload := map[string]string{
         "username": "admin",
         "password": password,
@@ -577,13 +576,8 @@ func GenerateAuthToken(password string) (string, error) {
     // Print the payload for debugging
     fmt.Printf("Payload: %s\n", string(payloadBytes))
 
-    transport := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-    }
-
     client := &http.Client{
-        Transport: transport,
-        Timeout:   30 * time.Second,
+        Timeout: 30 * time.Second,
     }
 
     req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
