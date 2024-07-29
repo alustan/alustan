@@ -10,7 +10,6 @@ import (
 	"bytes"
     "crypto/tls"
     "encoding/json"
-	"encoding/base64"
     "net/http"
 	"io"
 
@@ -557,24 +556,12 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
         return "", fmt.Errorf("password not found in secret")
     }
 
-    // Print the raw base64-encoded password for debugging
-    rawBase64Password := string(passwordBytes)
-    fmt.Printf("Raw base64-encoded password: %s\n", rawBase64Password)
+    // Print the raw password for debugging
+    password := string(passwordBytes)
+    fmt.Printf("Raw password: %s\n", password)
 
-    // Trim spaces and check for extraneous characters
-    trimmedPassword := strings.TrimSpace(rawBase64Password)
-    fmt.Printf("Trimmed base64-encoded password: %s\n", trimmedPassword)
 
-    // Decode the base64-encoded password
-    decodedPassword, err := base64.StdEncoding.DecodeString(trimmedPassword)
-    if err != nil {
-        return "", fmt.Errorf("failed to decode password: %v", err)
-    }
-
-    // Print the decoded password for debugging
-    fmt.Printf("Decoded password: %s\n", string(decodedPassword))
-
-    return string(decodedPassword), nil
+    return password, nil
 }
 
 
