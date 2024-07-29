@@ -538,13 +538,14 @@ func (c *Controller) updateStatus(observed *v1alpha1.App, status v1alpha1.AppSta
 }
 
 // Retrieve the base64-encoded admin password from the Kubernetes secret and decode it
+
 func getAdminPassword(clientset kubernetes.Interface) (string, error) {
     namespace := "argocd"
     secretName := "argocd-initial-admin-secret"
 
     secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
     if err != nil {
-        return "", err
+        return "", fmt.Errorf("failed to get secret: %v", err)
     }
 
     passwordBytes, exists := secret.Data["password"]
@@ -552,7 +553,14 @@ func getAdminPassword(clientset kubernetes.Interface) (string, error) {
         return "", fmt.Errorf("password not found in secret")
     }
 
-    decodedPassword, err := base64.StdEncoding.DecodeString(string(passwordBytes))
+    rawBase64Password := string(passwordBytes)
+    fmt.Printf("Raw base64 password: %s", rawBase64Password)
+
+    // Trim spaces and check for extraneous characters
+    trimmedPassword := strings.TrimSpace(rawBase64Password)
+    fmt.Printf("Trimmed base64 password: %s", trimmedPassword)
+
+    decodedPassword, err := base64.StdEncoding.DecodeString(trimmedPassword)
     if err != nil {
         return "", fmt.Errorf("failed to decode password: %v", err)
     }
