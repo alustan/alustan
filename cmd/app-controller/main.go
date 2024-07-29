@@ -14,6 +14,9 @@ import (
 	"github.com/alustan/alustan/pkg/application/controller"
 	"github.com/alustan/alustan/api/app/v1alpha1"
 	"go.uber.org/zap"
+	
+    "google.golang.org/grpc/grpclog"
+    
 )
 
 // Variables to be set by ldflags
@@ -35,8 +38,10 @@ func main() {
 	fmt.Printf("Date: %s\n", date)
 	fmt.Printf("Built by: %s\n", builtBy)
 
-
-	// Initialize logger
+	// Set gRPC logger to standard error with high verbosity
+	grpclog.SetLoggerV2(grpclog.NewLoggerV2WithVerbosity(os.Stderr, os.Stderr, os.Stderr, 99))
+	
+  // Initialize logger
 	logger, err := zap.NewProduction()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
