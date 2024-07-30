@@ -51,7 +51,7 @@ jobs:
       - name: Build and Push to GHCR
         uses: docker/build-push-action@v5
         with:
-          file: Dockerfile
+          file: docker/install_argocd/Dockerfile
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           cache-to: |
