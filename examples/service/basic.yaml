@@ -10,19 +10,19 @@ kind: App
 metadata:
   name: web-service
 spec:
-  workspace: default
+  environment: default
   source:
     repoURL: https://github.com/alustan/cluster-manifests
     path: basic-demo
     releaseName: basic-demo
     targetRevision: main
     values:
-      cluster: ${workspace.CLUSTER_NAME}
+      cluster: "{{.CLUSTER_NAME}}"
       service: frontend
       image: alustan/web-app-demo:1.0.0
       config:
-        DUMMY_1: ${workspace.dummy_output_1}
-        DUMMY_2: ${workspace.dummy_output_2}
+        DUMMY_1: "{{.dummy_output_1}}"
+        DUMMY_2: "{{.dummy_output_2}}"
 
   containerRegistry:
     provider: docker

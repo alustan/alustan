@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: install-argocd-manager-binding
+subjects:
+- kind: ServiceAccount
+  name: install-argocd-sa
+  namespace: alustan
+roleRef:
+  kind: ClusterRole
+  name: install-argocd-manager
+  apiGroup: rbac.authorization.k8s.io
+

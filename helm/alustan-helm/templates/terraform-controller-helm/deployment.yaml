@@ -33,14 +33,14 @@ spec:
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.githubTokenSecretName }}
-                  key: {{ .Values.githubTokenSecretKey }}
+                  name: {{ .Values.gitTokenSecretName }}
+                  key: {{ .Values.gitTokenSecretKey }}
            
             {{- else }}
             - name: CONTAINER_REGISTRY_SECRET
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
             - name: GITHUB_TOKEN
-              value: {{ .Values.githubToken }}
+              value: {{ .Values.gitToken }}
             {{- end }}
           imagePullPolicy: {{ .Values.infrastructure.image.pullPolicy }}
           ports:

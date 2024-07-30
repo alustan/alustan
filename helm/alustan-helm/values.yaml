@@ -4,13 +4,16 @@ namespace: alustan
 containerRegistry:
   containerRegistrySecret: "" # required to pull image and tag from OCI registry.
 # base64-encoded GitHub PAT
-githubToken: "" # required if previewEnvirinment is enabled for `private repository`. 
-# wish to Use Kubernetes Secrets to store "containerRegistrySecret or githubToken" "
+gitToken: "" # required if previewEnvirinment is enabled for `private repository`. 
+# wish to Use Kubernetes Secrets to store "containerRegistrySecret or gitToken" "
 useSecrets: false
 containerRegistrySecretName: ""
 containerRegistrySecretKey: ""
-githubTokenSecretName: ""
-githubTokenSecretKey: ""
+gitTokenSecretName: ""
+gitTokenSecretKey: ""
+gitSSHSecretName: ""
+gitSSHSecretKey: ""
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
@@ -46,6 +49,17 @@ app:
   service:
     type: ClusterIP
     port: 8081
+
+install:
+  image:
+    pullPolicy: IfNotPresent
+    repository: alustan/install-argocd
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "1.0.0"
+    
+argocdVersion: "6.6.0"
+gitOrgUrl: ""
+gitSSHSecret: ""
 argocdConfig: |
   redis:
     image:

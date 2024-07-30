@@ -4,6 +4,7 @@ GO := go
 # Directories
 INFRA_SRC_DIR := ./cmd/terraform-controller
 APP_SRC_DIR := ./cmd/app-controller
+INSTALL_SRC_DIR := ./cmd/install-argocd
 TEST_DIR := ./test
 
 # Targets
@@ -29,6 +30,9 @@ build-infra:
 build-app:
 	$(GO) build -o bin/app-controller $(APP_SRC_DIR)
 
+build-install:
+	$(GO) build -o bin/install-argocd $(INSTALL_SRC_DIR)
+
 ## Run tests
 test:
 	$(GO) test -v $(TEST_DIR)/...
@@ -51,6 +55,7 @@ help:
 	@echo "Targets:"
 	@echo "  build-infra          Builds the infra controller binary"
 	@echo "  build-app          Builds the app controller binary"
+	@echo "  build-install      Builds the install-argocd  binary"
 	@echo "  test           Run tests"
 	@echo "  lint           Run linting"
 	@echo "  clean          Clean build artifacts"

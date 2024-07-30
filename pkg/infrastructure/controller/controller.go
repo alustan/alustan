@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"bytes"
+	"io"
+    "encoding/json"
+    "net/http"
 
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -19,10 +23,13 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"  
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/client-go/dynamic/dynamicinformer"
+	apiclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
+	clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 
 	"github.com/alustan/alustan/pkg/infrastructure/registry"
 	"github.com/alustan/alustan/api/infrastructure/v1alpha1"
@@ -30,6 +37,12 @@ import (
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/infrastructure/listers"
 	Kubernetespkg "github.com/alustan/alustan/pkg/infrastructure/kubernetes"
+	"github.com/alustan/alustan/pkg/checkargo"
+)
+
+var (
+    token     string
+    tokenLock sync.Mutex
 )
 
 type Controller struct {
@@ -47,6 +60,8 @@ type Controller struct {
 	maxWorkers       int
 	workerStopCh  chan struct{}
     managerStopCh chan struct{}
+	argoClient   apiclient.Client
+	clusterClient  clusterpkg.ClusterServiceClient
 	
 }
 
@@ -74,6 +89,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 	return ctrl
 }
 
+// NewInClusterController initializes a new controller for in-cluster execution
 func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -86,6 +102,20 @@ func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogge
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		logger.Fatalf("Error creating Kubernetes clientset: %v", err)
+	}
+
+	// Check if ArgoCD is installed and ready
+	installed, ready, err := checkargo.IsArgoCDInstalledAndReady(logger, clientset)
+	if err != nil {
+		logger.Fatalf("Error checking ArgoCD installation status: %v", err)
+	}
+
+	if !installed {
+		logger.Fatalf("ArgoCD is not installed in the cluster")
+	}
+
+	if !ready {
+		logger.Fatalf("ArgoCD components are installed but not ready")
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
@@ -197,7 +227,26 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				c.logger.Info("got leadership")
-				c.logger.Info("Terraform controller succesfuly instantiated!!!")
+
+				 // Authenticate and create ArgoCD client
+				 password, err := getAdminPassword(c.Clientset)
+				 if err != nil {
+					 c.logger.Fatalf("Failed to get admin password: %v", err)
+				 }
+
+				 authToken, err := GetAuthToken(c, password)
+				 if err != nil {
+					 c.logger.Fatalf("Failed to get auth token: %v", err)
+				 }
+
+				 err = refreshClients(c, authToken)
+				 if err != nil {
+					 c.logger.Fatalf("Failed to refresh clients: %v", err)
+				 }
+
+				 c.logger.Info("Successfully created ArgoCD client")
+				 c.logger.Infof("Successfully created Cluster client")
+	             c.logger.Info("Terraform controller succesfuly instantiated!!!")
 				// Start processing items
 				go c.manageWorkers()
 			},
@@ -439,6 +488,14 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
     if execTerraformStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error executing terraform")
     }
+  
+	cluster := observed.Spec.Environment
+
+    err = Kubernetespkg.CreateOrUpdateArgoCluster(c.logger, c.clusterClient, "in-cluster", cluster)
+    if err != nil {
+        c.logger.Errorf("Failed to create or update ArgoCD secret: %v", err)
+		return commonStatus, fmt.Errorf("Failed to create or update ArgoCD secret: %v", err)
+    }
 
     return commonStatus, nil
 }
@@ -472,6 +529,160 @@ func (c *Controller) updateStatus(observed *v1alpha1.Terraform, status v1alpha1.
 }
 
 
+func getAdminPassword(clientset kubernetes.Interface) (string, error) {
+    namespace := "argocd"
+    secretName := "argocd-initial-admin-secret"
 
+    // Retrieve the secret from Kubernetes
+    secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+    if err != nil {
+        return "", fmt.Errorf("failed to get secret: %v", err)
+    }
+
+    // Ensure the password field exists
+    passwordBytes, exists := secret.Data["password"]
+    if !exists {
+        return "", fmt.Errorf("password not found in secret")
+    }
+
+    // Print the raw password for debugging
+    password := string(passwordBytes)
+   
+
+
+    return password, nil
+}
+
+
+func GenerateAuthToken(password string) (string, error) {
+    argoURL := "http://argo-cd-argocd-server.argocd.svc.cluster.local/api/v1/session"
+    payload := map[string]string{
+        "username": "admin",
+        "password": password,
+    }
+    payloadBytes, _ := json.Marshal(payload)
+
+
+    client := &http.Client{
+        Timeout: 30 * time.Second,
+    }
+
+    req, err := http.NewRequest("POST", argoURL, bytes.NewBuffer(payloadBytes))
+    if err != nil {
+        return "", fmt.Errorf("failed to create request: %v", err)
+    }
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return "", fmt.Errorf("failed to send request: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+      return "", fmt.Errorf("authentication failed: %v, response: %s", resp.Status, string(bodyBytes))
+    }
+
+    var response map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+        return "", fmt.Errorf("failed to decode response: %v", err)
+    }
+
+    token, ok := response["token"].(string)
+    if !ok {
+       
+      return "", fmt.Errorf("token not found in response")
+    }
+
+
+    return token, nil
+}
+
+
+
+
+// GetAuthToken retrieves the current token, generating a new one if necessary
+func GetAuthToken(c *Controller, password string) (string, error) {
+    tokenLock.Lock()
+    defer tokenLock.Unlock()
+
+    if token == "" {
+        var err error
+        token, err = GenerateAuthToken(password)
+        if err != nil {
+            return "", fmt.Errorf("failed to generate auth token: %v", err)
+        }
+        go scheduleTokenRefresh(c, password)
+    }
+
+    return token, nil
+}
+
+
+// scheduleTokenRefresh sets up a routine to refresh the token before it expires and update clients
+func scheduleTokenRefresh(c *Controller, password string) {
+    for {
+        // Schedule the token refresh before the actual expiry time
+        time.Sleep(23 * time.Hour) // Assuming a 24-hour token expiry, adjust as necessary
+        tokenLock.Lock()
+
+        newToken, err := GenerateAuthToken(password)
+        if err != nil {
+            fmt.Printf("failed to refresh token: %v\n", err)
+            tokenLock.Unlock()
+            continue
+        }
+
+        token = newToken
+        err = refreshClients(c, newToken) // Pass controller reference
+        if err != nil {
+            fmt.Printf("failed to refresh clients: %v\n", err)
+        }
+
+        tokenLock.Unlock()
+    }
+}
+
+
+// CreateArgoCDClient creates and returns an Argo CD client
+func CreateArgoCDClient(authToken string) (apiclient.Client, error) {
+   
+    argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local"
+
+    // Create Argo CD client options with the token
+    argoClientOpts := apiclient.ClientOptions{
+        ServerAddr: argoURL,
+        AuthToken:  authToken,
+		PlainText: true,
+    }
+
+    // Create the Argo CD client
+    argoClient, err := apiclient.NewClient(&argoClientOpts)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create Argo CD client: %v", err)
+    }
+
+    return argoClient, nil
+}
+
+func refreshClients(c *Controller, newToken string) error {
+    // Update the Argo CD client with the new token
+    newArgoClient, err := CreateArgoCDClient(newToken)
+    if err != nil {
+        return fmt.Errorf("failed to create Argo CD client: %v", err)
+    }
+
+    // Update the clients stored in the controller struct
+    c.argoClient = newArgoClient
+
+    _, newClusterClient, err := newArgoClient.NewClusterClient()
+    if err != nil {
+        return fmt.Errorf("failed to create ArgoCD cluster client: %v", err)
+    }
+    c.clusterClient = newClusterClient
+
+   return nil
+}
 
 

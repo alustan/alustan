@@ -32,8 +32,7 @@ spec:
             - name: APP_SYNC_INTERVAL
               value: {{ .Values.app.syncInterval }}
 
-            - name: ARGOCD_CONFIG
-              value: {{ .Values.argocdConfig | quote }}
+           
 
           
               
@@ -48,8 +47,8 @@ spec:
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.githubTokenSecretName }}
-                  key: {{ .Values.githubTokenSecretKey }}
+                  name: {{ .Values.gitTokenSecretName }}
+                  key: {{ .Values.gitTokenSecretKey }}
            
             {{- else }}
            
@@ -58,7 +57,7 @@ spec:
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
              
             - name: GITHUB_TOKEN
-              value: {{ .Values.githubToken}}
+              value: {{ .Values.gitToken}}
          
            
             {{- end }}

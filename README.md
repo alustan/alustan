@@ -255,8 +255,9 @@ base64 -w 0 secret.json
 apiVersion: alustan.io/v1alpha1
 kind: Terraform
 metadata:
-  name: staging-cluster
+  name: staging
 spec:
+  environment: "staging"
   variables:
     TF_VAR_workspace: "staging"
     TF_VAR_region: "us-east-1"
@@ -286,18 +287,18 @@ kind: App
 metadata:
   name: api-service
 spec:
-  workspace: staging
+  environment: staging
   source:
     repoURL: https://github.com/alustan/cluster-manifests
     path: application-helm
     releaseName: backend-application
     targetRevision: main
     values:
-      cluster: ${workspace.CLUSTER_NAME}
+      cluster: "{{.CLUSTER_NAME}}"
       service: backend
       image: alustan/backend:0.2.0
       config:
-        DB_URL: postgresql://${workspace.DB_USER}:${workspace.DB_PASSWORD}@postgres:5432/${workspace.DB_NAME}
+        DB_URL: "postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}"
 
   containerRegistry:
     provider: docker
@@ -310,7 +311,7 @@ kind: App
 metadata:
   name: web-service
 spec:
-  workspace: staging
+  environment: staging
   previewEnvironment:
     enabled: true
     gitOwner: alustan
