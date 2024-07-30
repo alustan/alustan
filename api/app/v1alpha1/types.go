@@ -12,7 +12,7 @@ import (
 
 // AppSpec defines the desired state of App
 type AppSpec struct {
-    Workspace          string             `json:"workspace"`
+    Environment          string             `json:"environment"`
     PreviewEnvironment   PreviewEnvironment    `json:"previewEnvironment"` 
     Source           SourceSpec         `json:"source"`
     ContainerRegistry ContainerRegistry `json:"containerRegistry"`

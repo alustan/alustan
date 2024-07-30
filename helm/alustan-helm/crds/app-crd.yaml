@@ -103,13 +103,13 @@ spec:
                 - repoURL
                 - targetRevision
                 type: object
-              workspace:
+              environment:
                 type: string
             required:
             - containerRegistry
           
             - source
-            - workspace
+            - environment
             type: object
           status:
             description: AppStatus defines the observed state of App

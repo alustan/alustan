@@ -11,6 +11,7 @@ import (
 
 // TerraformSpec defines the desired state of Terraform
 type TerraformSpec struct {
+    Environment      string            `json:"environment"`
     Variables         map[string]string `json:"variables"`
     Scripts           Scripts           `json:"scripts"`
     PostDeploy        PostDeploy        `json:"postDeploy"`

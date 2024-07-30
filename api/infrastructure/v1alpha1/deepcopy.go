@@ -8,6 +8,7 @@ func (in *Terraform) DeepCopyInto(out *Terraform) {
 	out.TypeMeta = in.TypeMeta
 	out.ObjectMeta = in.ObjectMeta
 	out.Spec = TerraformSpec{
+		Environment:       in.Spec.Environment,
 		Variables:         in.Spec.Variables,
 		Scripts:           in.Spec.Scripts,
 		PostDeploy:        in.Spec.PostDeploy,

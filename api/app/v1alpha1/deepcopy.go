@@ -8,7 +8,7 @@ func (in *App) DeepCopyInto(out *App) {
 	out.TypeMeta = in.TypeMeta
 	out.ObjectMeta = in.ObjectMeta
 	out.Spec = AppSpec{
-		Workspace:         in.Spec.Workspace,
+		Environment:         in.Spec.Environment,
 		PreviewEnvironment:   in.Spec.PreviewEnvironment,
 		Source:            in.Spec.Source,
 		ContainerRegistry: in.Spec.ContainerRegistry,

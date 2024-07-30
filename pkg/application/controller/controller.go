@@ -37,8 +37,8 @@ import (
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	
 	applicationsetpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-	clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
-	repocredspkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/repocreds"
+	
+	
 	
 
 	"github.com/alustan/alustan/pkg/application/registry"
@@ -47,7 +47,7 @@ import (
 	"github.com/alustan/alustan/pkg/util"
 	"github.com/alustan/alustan/pkg/application/listers"
 	Kubernetespkg "github.com/alustan/alustan/pkg/application/kubernetes"
-	"github.com/alustan/alustan/pkg/installargocd"
+	"github.com/alustan/alustan/pkg/checkargo"
 	
 )
 
@@ -74,19 +74,14 @@ type Controller struct {
     managerStopCh chan struct{}
 	argoClient   apiclient.Client
 	appSetClient   applicationsetpkg.ApplicationSetServiceClient
-	clusterClient  clusterpkg.ClusterServiceClient
-	repoCredsClient repocredspkg.RepoCredsServiceClient
+	
+	
 	
 }
 
 
 // NewController initializes a new controller
 func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
-	argoerr := installargocd.InstallArgoCD(logger, clientset, dynClient, "6.6.0")
-	if argoerr != nil {
-		logger.Fatal(argoerr.Error())
-	}
-
 	ctrl := &Controller{
 		Clientset:       clientset,
 		dynClient:       dynClient,
@@ -109,6 +104,7 @@ func NewController(clientset kubernetes.Interface, dynClient dynamic.Interface, 
 }
 
 
+// NewInClusterController initializes a new controller for in-cluster execution
 func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogger) *Controller {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -121,6 +117,20 @@ func NewInClusterController(syncInterval time.Duration, logger *zap.SugaredLogge
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		logger.Fatalf("Error creating Kubernetes clientset: %v", err)
+	}
+
+	// Check if ArgoCD is installed and ready
+	installed, ready, err := checkargo.IsArgoCDInstalledAndReady(logger, clientset)
+	if err != nil {
+		logger.Fatalf("Error checking ArgoCD installation status: %v", err)
+	}
+
+	if !installed {
+		logger.Fatalf("ArgoCD is not installed in the cluster")
+	}
+
+	if !ready {
+		logger.Fatalf("ArgoCD components are installed but not ready")
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
@@ -255,8 +265,6 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		
 			 c.logger.Info("Successfully created ArgoCD client")
              c.logger.Infof("Successfully created ApplicationSet client")
-			 c.logger.Infof("Successfully created Cluster client")
-			 c.logger.Infof("Successfully created Repo client")
 			 c.logger.Info("App controller successfuly instantiated!!!")
 
 				// Start processing items
@@ -493,7 +501,7 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
     }
 
    // Handle RunService and process its status and error
-    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.clusterClient, c.dynClient, appSetClient, observed, secretName, key, finalizing)
+    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, finalizing)
 	
 	commonStatus = mergeStatuses(commonStatus, runServiceStatus)
 	
@@ -659,7 +667,7 @@ func scheduleTokenRefresh(c *Controller, password string) {
 
 // CreateArgoCDClient creates and returns an Argo CD client
 func CreateArgoCDClient(authToken string) (apiclient.Client, error) {
-    // Use the correct port for HTTPS
+   
     argoURL := "argo-cd-argocd-server.argocd.svc.cluster.local"
 
     // Create Argo CD client options with the token
@@ -688,30 +696,11 @@ func refreshClients(c *Controller, newToken string) error {
     // Update the clients stored in the controller struct
     c.argoClient = newArgoClient
 
-    conn, newClusterClient, err := newArgoClient.NewClusterClient()
-    if err != nil {
-        return fmt.Errorf("failed to create ArgoCD cluster client: %v", err)
-    }
-    c.clusterClient = newClusterClient
+   
 
-    repoCloser, newRepoCredsClient, err := newArgoClient.NewRepoCredsClient()
+   _, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
     if err != nil {
-        conn.Close() // Ensure to close the previous connection if error occurs
-        return fmt.Errorf("failed to create repo creds client: %v", err)
-    }
-    c.repoCredsClient = newRepoCredsClient
-
-    err = storeSSHRepoSecret(c, newRepoCredsClient)
-    if err != nil {
-        conn.Close()  // Ensure to close the previous connection if error occurs
-        repoCloser.Close()  // Ensure to close the previous closer if error occurs
-        return fmt.Errorf("failed to store SSH repo secret: %v", err)
-    }
-
-    _, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
-    if err != nil {
-        conn.Close()  // Ensure to close the previous connection if error occurs
-        repoCloser.Close()  // Ensure to close the previous closer if error occurs
+       
         return fmt.Errorf("failed to create ApplicationSet client: %v", err)
     }
     c.appSetClient = newAppSetClient
@@ -721,33 +710,3 @@ func refreshClients(c *Controller, newToken string) error {
 }
 
 
-// storeSSHRepoSecret stores the SSH repo secret retrieved from an environment variable.
-func storeSSHRepoSecret(c *Controller, repoCredsClient repocredspkg.RepoCredsServiceClient) error {
-    // Retrieve the secret from the environment variable
-    secretValue := os.Getenv("GIT_SSH_SECRET")
-    repoURL := os.Getenv("REPO_URL")
-    if secretValue == "" {
-        return nil
-    }
-
-    // Trim any leading and trailing spaces
-    trimmedSecret := strings.TrimSpace(secretValue)
-
-    // Create the request to store the SSH repo secret
-    credsRequest := &repocredspkg.RepoCredsCreateRequest{
-        Creds: &appv1alpha1.RepoCreds{
-            Type:          "git",
-            URL:           repoURL,
-            SSHPrivateKey: trimmedSecret,
-        },
-    }
-
-    // Store the SSH repo secret using the repo creds client
-    _, err := repoCredsClient.CreateRepositoryCredentials(context.Background(), credsRequest)
-    if err != nil {
-        return fmt.Errorf("failed to store SSH repo secret: %v", err)
-    }
-
-    c.logger.Info("SSH repo secret stored successfully")
-    return nil
-}

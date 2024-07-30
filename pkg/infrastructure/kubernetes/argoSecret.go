@@ -20,7 +20,7 @@ func CreateOrUpdateArgoCluster(
 	clusterName, environment string,
 ) error {
 	// Create a background context with timeout to avoid indefinite blocking
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Retry logic using client-go wait package
@@ -48,9 +48,34 @@ func CreateOrUpdateArgoCluster(
 			return false, fmt.Errorf("failed to list clusters: %w", err)
 		}
 
-		// Check if any cluster exists
-		if len(clusters.Items) > 0 {
-			logger.Info("Found existing clusters, returning without creating a new cluster.")
+		var defaultCluster *appv1alpha1.Cluster
+		for _, cl := range clusters.Items {
+			if cl.Server == "https://kubernetes.default.svc" {
+				defaultCluster = &cl  // Take the address of cl
+			} else if env, exists := cl.Labels["environment"]; exists && env == environment {
+				logger.Info("Found existing cluster with the specified environment, returning without creating or updating a cluster.")
+				return true, nil
+			}
+		}
+
+		if defaultCluster != nil {
+			// Update the default cluster with the new environment label
+			if _, exists := defaultCluster.Labels["environment"]; !exists || defaultCluster.Labels["environment"] != environment {
+				defaultCluster.Labels["environment"] = environment
+				updateRequest := &cluster.ClusterUpdateRequest{
+					Cluster: defaultCluster,
+				}
+				_, err := clusterClient.Update(ctx, updateRequest, callOptions...)
+				if err != nil {
+					logger.Errorf("Failed to update default cluster: %v", err)
+					if status.Code(err) == codes.DeadlineExceeded || status.Code(err) == codes.Unavailable {
+						// Retry on transient errors
+						return false, nil
+					}
+					return false, fmt.Errorf("failed to update default cluster: %w", err)
+				}
+				logger.Infof("Default cluster updated successfully with environment label: %s", environment)
+			}
 			return true, nil
 		}
 

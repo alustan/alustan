@@ -7,7 +7,9 @@ import (
 	"time"
 	"encoding/json"
     "regexp"
-
+    "bytes"
+	"text/template"
+	
     "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -15,8 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
     applicationset "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
-    clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
-	"go.uber.org/zap"
+    "go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +36,7 @@ import (
 func RunService(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
-    clusterClient clusterpkg.ClusterServiceClient,
+    
     dynamicClient dynamic.Interface,
     appSetClient   applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
@@ -73,7 +74,7 @@ func RunService(
     }
 
     // Proceed with creating the ApplicationSet
-    appStatus, err := CreateApplicationSet(logger, clientset, clusterClient, appSetClient, observed, secretName, key)
+    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, observed, secretName, key)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
@@ -143,20 +144,26 @@ func fetchSecretAnnotations(
 }
 
 // replaceWorkspaceValues replaces placeholders in the values map with corresponding values from the output map
-func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string) {
+func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string, error) {
     var clusterValue string
     modifiedValues := make(map[string]interface{})
 
     for key, value := range values {
         switch v := value.(type) {
         case string:
-            replacedValue := replacePlaceholder(v, output)
+            replacedValue, err := replacePlaceholder(v, output)
+            if err != nil {
+                return nil, "", err
+            }
             modifiedValues[key] = replacedValue
             if key == "cluster" {
                 clusterValue = replacedValue
             }
         case map[string]interface{}:
-            nestedValues, nestedClusterValue := replaceWorkspaceValues(v, output)
+            nestedValues, nestedClusterValue, err := replaceWorkspaceValues(v, output)
+            if err != nil {
+                return nil, "", err
+            }
             modifiedValues[key] = nestedValues
             if nestedClusterValue != "" {
                 clusterValue = nestedClusterValue
@@ -166,8 +173,9 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
         }
     }
 
-    return modifiedValues, clusterValue
+    return modifiedValues, clusterValue, nil
 }
+
 
 // modifyIngressHost modifies the host values in Ingress resources
 func modifyIngressHost(values map[string]interface{}, preview bool, prefix string) map[string]interface{} {
@@ -244,25 +252,22 @@ func indent(text, prefix string) string {
 	return indented.String()
 }
 
-// replacePlaceholder replaces placeholders in the value string with corresponding values from the output map
-func replacePlaceholder(value string, output map[string]string) string {
-	// Regular expression to find placeholders with optional spaces around the key
-	re := regexp.MustCompile(`\$\{\s*workspace\.(\w+)\s*\}`)
+// replacePlaceholder uses Go templates to replace placeholders with corresponding values from the output map
+func replacePlaceholder(value string, output map[string]string) (string, error) {
+	tmpl, err := template.New("placeholder").Parse(value)
+	if err != nil {
+		return "", err
+	}
 
-	return re.ReplaceAllStringFunc(value, func(placeholder string) string {
-		// Extract the key and trim spaces
-		matches := re.FindStringSubmatch(placeholder)
-		if len(matches) > 1 {
-			key := matches[1]
-			if val, exists := output[key]; exists {
-				
-				return val
-			}
-		}
-		return placeholder // return the original placeholder if no match found
-	})
+	var result bytes.Buffer
+	if err := tmpl.Execute(&result, output); err != nil {
+		return "", err
+	}
+
+	return result.String(), nil
 }
 
+// Helper function to convert RawExtension map to interface map
 func convertRawExtensionsToInterface(values map[string]runtime.RawExtension) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 	for key, value := range values {
@@ -276,10 +281,11 @@ func convertRawExtensionsToInterface(values map[string]runtime.RawExtension) (ma
 }
 
 
+
 func CreateApplicationSet(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
-    clusterClient clusterpkg.ClusterServiceClient,
+   
     appSetClient   applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
     secretName, key string,
@@ -289,7 +295,7 @@ func CreateApplicationSet(
     secretTypeLabel := "alustan.io/secret-type"
     secretTypeValue := "cluster"
     environmentLabel := "environment"
-    environmentValue := observed.Spec.Workspace
+    environmentValue := observed.Spec.Environment
     values := observed.Spec.Source.Values
     preview := observed.Spec.PreviewEnvironment.Enabled
     gitOwner := observed.Spec.PreviewEnvironment.GitOwner
@@ -319,8 +325,11 @@ func CreateApplicationSet(
     var modifiedValues map[string]interface{}
     var cluster string
 
-    // Check if values contain placeholders like ${workspace.}
-    if containsPlaceholders(convertedValues, "${workspace.") {
+    // Regular expression pattern to match Go template placeholders
+	placeholderPattern := `\{\{\.[^}]+\}\}`
+    
+    // Check if values contain go template placeholders 
+    if containsPlaceholders(convertedValues, placeholderPattern) {
         logger.Info("Values contain placeholders. Fetching annotations.")
         annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
         if err != nil {
@@ -340,7 +349,10 @@ func CreateApplicationSet(
         }
 
         // Replace placeholders with values from annotations
-        modifiedValues, cluster = replaceWorkspaceValues(convertedValues, annotations)
+        modifiedValues, cluster, err = replaceWorkspaceValues(convertedValues, annotations)
+        if err != nil {
+            return nil, err
+        }
     } else {
         logger.Info("No placeholders in values, continuing execution with default values")
         modifiedValues = convertedValues
@@ -369,13 +381,7 @@ func CreateApplicationSet(
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
     
 
-    argoSecretName := "in-cluster"
-
-    err = kubernetespkg.CreateOrUpdateArgoCluster(logger, clusterClient, argoSecretName, cluster)
-    if err != nil {
-        logger.Errorf("Failed to create or update ArgoCD secret: %v", err)
-        return nil, err
-    }
+  
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
@@ -703,25 +709,27 @@ func convertToRawExtensionMap(values map[string]interface{}) (map[string]runtime
     return result, nil
 }
 
-// Helper function to check for placeholders
-func containsPlaceholders(values interface{}, placeholder string) bool {
-    switch v := values.(type) {
-    case map[string]interface{}:
-        for _, val := range v {
-            if containsPlaceholders(val, placeholder) {
-                return true
-            }
-        }
-    case []interface{}:
-        for _, val := range v {
-            if containsPlaceholders(val, placeholder) {
-                return true
-            }
-        }
-    case string:
-        if strings.Contains(v, placeholder) {
-            return true
-        }
-    }
-    return false
+// containsPlaceholders checks for Go template-style placeholders in the format {{.PLACEHOLDER}}
+func containsPlaceholders(values interface{}, placeholderPattern string) bool {
+	placeholderRegex := regexp.MustCompile(placeholderPattern)
+
+	switch v := values.(type) {
+	case map[string]interface{}:
+		for _, val := range v {
+			if containsPlaceholders(val, placeholderPattern) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, val := range v {
+			if containsPlaceholders(val, placeholderPattern) {
+				return true
+			}
+		}
+	case string:
+		if placeholderRegex.MatchString(v) {
+			return true
+		}
+	}
+	return false
 }

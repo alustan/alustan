@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: install-argocd
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "install-argocd.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      serviceAccountName: install-argocd-sa
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.install.image.repository }}:{{ .Values.install.image.tag }}"
+        env:
+          - name: ARGOCD_VERSION
+            value: {{ .Values.argocdVersion}}
+
+          - name: ARGOCD_CONFIG
+            value: {{ .Values.argocdConfig | quote }}
+
+          - name: GIT_ORG_URL
+            value: {{ .Values.gitOrgUrl }}
+
+        {{- if .Values.useSecrets }}
+        
+
+          - name: GIT_SSH_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.gitSSHSecretName }}
+                key: {{ .Values.gitSSHSecretKey }}
+          
+          {{- else }}
+          
+            
+          - name: GIT_SSH_SECRET
+            value: {{ .Values.gitSSHSecret}}
+        
+          
+          {{- end }}
+        
+      restartPolicy: Never
+  backoffLimit: 3

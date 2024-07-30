@@ -52,7 +52,10 @@ spec:
                 - imageName
                 - provider
                 - semanticVersion
+                
                 type: object
+              environment:
+                type: string
               postDeploy:
                 description: PostDeploy defines the post-deployment actions
                 properties:
@@ -83,6 +86,7 @@ spec:
                 type: object
             required:
             - containerRegistry
+            - environment
             - postDeploy
             - scripts
             - variables
