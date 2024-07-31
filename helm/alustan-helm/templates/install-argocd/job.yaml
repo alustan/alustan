@@ -3,6 +3,9 @@ kind: Job
 metadata:
   name: install-argocd
   namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    
   labels:
     {{- include "install-argocd.labels" . | nindent 4 }}
 spec:

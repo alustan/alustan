@@ -13,7 +13,6 @@ gitTokenSecretName: ""
 gitTokenSecretKey: ""
 gitSSHSecretName: ""
 gitSSHSecretKey: ""
-
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
@@ -32,7 +31,7 @@ infrastructure:
     pullPolicy: IfNotPresent
     repository: alustan/terraform-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.0.0"
+    tag: "0.93.57"
   syncInterval: ""
   service:
     type: ClusterIP
@@ -44,24 +43,21 @@ app:
     pullPolicy: IfNotPresent
     repository: alustan/app-controller
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.0.0"
+    tag: "0.93.57"
   syncInterval: ""
   service:
     type: ClusterIP
     port: 8081
-
 install:
   image:
     pullPolicy: IfNotPresent
     repository: alustan/install-argocd
     # Overrides the image tag whose default is the chart appVersion.
     tag: "1.0.0"
-    
 argocdVersion: "6.6.0"
 gitOrgUrl: ""
 gitSSHSecret: ""
 argocdConfig: |
-  redis:
-    image:
-      repository: redis
-      tag: 7.2.4-alpine
+  server:
+    extraArgs:
+      - --insecure

@@ -4,17 +4,19 @@
 
 ## Design 
 
+- Leverages **argocd apiclient** abstracting its complexities into a unified solution
+
  **App-controller**
 
 - The `App controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
 
-> should have a labelkey `environment` and a value which is same as that specified in the **workspace field**
+> should have a labelkey `environment` and a value which is same as that specified in the **environment field**
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
 kind: App
 spec:
-  workspace: staging
+  environment: staging
 ```
 - Ability to deploy services and specify dependency pattern which will be respected when provisioning and destroying
 
@@ -32,25 +34,26 @@ spec:
 
   ```
 
-- The level of abstraction depends largely  on the structure of your helm values file and your terraform variables file
+- The level of abstraction largely depends on the structure of your helm values file and your terraform variables file
 
-- Each service is deployed in the specified `cluster`. therefore `cluster Name` should be provided.
-
-The `app-controller` expects the cluster be specified in your helm chart
-**For example this extracts cluster name from a key `CLUSTER_NAME` stored in cluster secret**
 >
 ```yaml
 apiVersion: alustan.io/v1alpha1
 kind: App
 spec:
   source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: application-helm
+    releaseName: web-application
+    targetRevision: main
     values:
-      cluster: ${workspace.CLUSTER_NAME}
-
-
+      image:
+        repository: alustan/web:1.1.0
+      service: frontend}
+      ...
 ```
 
-- To reference deployed infrastructure variables in your application use `${workspace.NAME}` this will automatically be populated for you. the `NAME` field should be same as that stored in **cluster secret**
+- To reference deployed infrastructure variables in your application use `{{.NAME}}` **go template** this will be automatically populated for you. the `NAME` field should be same as that stored in **alustan cluster secret**
 
 > 
 ```yaml
@@ -58,15 +61,17 @@ apiVersion: alustan.io/v1alpha1
 kind: App
 values:
   config:
-    DB_URL: postgresql://${workspace.DB_USER}:${workspace.DB_PASSWORD}@postgres:5432/${workspace.DB_NAME}
+    DB_URL: postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}
    
 ```
 
 -  Peculiarities when `preview environment` is enabled
 
-**Your Pullrequest label tag should be `preview`**
+**Your Pullrequest label `tag` should be `preview`**
 
-> If you wish to expose the application running on an epheramal environment via `Ingress` the controller expects the Ingress field to be structured as specified below in your helm chart so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
+**For private git repo: provide `gitToken` in helm values file**
+
+> If you wish to expose the application running on an ephemeral environment via `Ingress` the controller expects the Ingress field to be structured as specified below in your helm chart so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
 > 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -80,10 +85,10 @@ spec:
     values:
       ingress:
         hosts:
-          - host: chart-example.local
+        - host: chart-example.local
         tls: 
         - hosts:
-            - chart-example.local
+          - chart-example.local
   ```
 
 -  Scans your container registry every `5 mins`  and uses the latest image that satisfies the specified `semantic tag constraint`.
@@ -113,10 +118,27 @@ spec:
 
 **Terraform-controller**
 
+- Specify the **environment**, this will create or update argocd in-cluster secret label with the specified environment under the hood, wiil be used by `app-controller` to determine the cluster to deploy to`
+
+> will first check if argocd cluster secret exists with specified label *may be manually created by user* before attempting to create one
+
+> the **Terraform workload environment** should match the **App workload environment** 
+
+```yaml
+apiVersion: alustan.io/v1alpha1
+kind: Terraform
+metadata:
+  name: staging
+spec:
+  environment: staging
+```
+
 - The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
 
 ```yaml
 variables:
+  TF_VAR_workspace: staging
+  TF_VAR_region: us-east-1
   TF_VAR_provision_cluster: "true"
   TF_VAR_provision_db: "false"
   TF_VAR_vpc_cidr: "10.1.0.0/16"
@@ -138,7 +160,7 @@ scripts:
 
 - `postDeploy` is an additional flexibility tool that will enable end users write a custom script that will be run by the controller and `output` stored in status field.
 
-> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure/blob/main/postdeploy) (could be any scripting language) that reaches out to aws api and retrieves metadata and health status of cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure/blob/main/postdeploy) (could be any scripting language) that reaches out to aws api and retrieves metadata and health status of provisioned cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
 
 > The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
 
@@ -150,10 +172,7 @@ postDeploy:
     region: TF_VAR_region
 
 ``` 
-> **The output of your `postDeploy` script should match `(map[string]interface{}` with `outputs` key at top level**
-
-> **key: is a `string`, body: `any arbitrary data structure`**
-
+> **The output of your `postDeploy` script should have key: as `outputs`, body: `any arbitrary data structure`**
 
 ```yaml
 {
@@ -215,9 +234,9 @@ helm install my-alustan-helm oci://registry-1.docker.io/alustan/alustan-helm --v
 - Alternatively
 
 ```sh
-helm fetch oci://registry-1.docker.io/<registry name>/alustan-helm --version <version> --untar=true
+helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> --untar=true
 ```
-- Update helm **values** file
+- Update helm **values** file with relevant `secrets`
 
 - `helm install controller alustan-helm  --debug`
 
@@ -244,7 +263,7 @@ base64 -w 0 secret.json
 
 ```
 
-**If previewEnvironment is enabled for private git repository; Ensure to supply the `githubToken` in the controller helm values file**
+**For private git repository; Ensure to supply the `gitSSHSecret` in the controller helm values file**
 
 
 ## Workload specification
@@ -257,7 +276,7 @@ kind: Terraform
 metadata:
   name: staging
 spec:
-  environment: "staging"
+  environment: staging
   variables:
     TF_VAR_workspace: "staging"
     TF_VAR_region: "us-east-1"
@@ -294,7 +313,6 @@ spec:
     releaseName: backend-application
     targetRevision: main
     values:
-      cluster: "{{.CLUSTER_NAME}}"
       service: backend
       image: alustan/backend:0.2.0
       config:
@@ -323,7 +341,6 @@ spec:
     releaseName: web-application
     targetRevision: main
     values:
-      cluster: ${workspace.CLUSTER_NAME}
       image:
         repository: alustan/web:1.1.0
       service: frontend

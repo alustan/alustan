@@ -12,8 +12,7 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app: app-controller-helm
-helm.sh/hook: post-install
-helm.sh/hook-weight: "1"
+
 {{- end }}
 
 
@@ -21,8 +20,7 @@ helm.sh/hook-weight: "1"
 app.kubernetes.io/name: app-controller-helm
 app.kubernetes.io/instance: {{ .Release.Name }}
 app: app-controller-helm
-helm.sh/hook: post-install
-helm.sh/hook-weight: "1"
+
 {{- end }}
 
 
