@@ -19,6 +19,14 @@ func CreateOrUpdateArgoCluster(
 	clusterClient cluster.ClusterServiceClient,
 	clusterName, environment string,
 ) error {
+	if clusterClient == nil {
+		return fmt.Errorf("clusterClient is nil")
+	}
+
+	if environment == "" {
+		return fmt.Errorf("environment is empty")
+	}
+
 	// Create a background context with timeout to avoid indefinite blocking
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -51,7 +59,7 @@ func CreateOrUpdateArgoCluster(
 		var defaultCluster *appv1alpha1.Cluster
 		for _, cl := range clusters.Items {
 			if cl.Server == "https://kubernetes.default.svc" {
-				defaultCluster = &cl  // Take the address of cl
+				defaultCluster = &cl
 			} else if env, exists := cl.Labels["environment"]; exists && env == environment {
 				logger.Info("Found existing cluster with the specified environment, returning without creating or updating a cluster.")
 				return true, nil

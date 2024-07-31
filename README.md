@@ -238,7 +238,7 @@ helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> -
 ```
 - Update helm **values** file with relevant `secrets`
 
-- `helm install controller alustan-helm  --debug`
+- `helm install controller alustan-helm --timeout 10m0s --debug`
 
 
 **To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
