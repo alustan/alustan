@@ -144,8 +144,8 @@ func fetchSecretAnnotations(
 }
 
 // replaceWorkspaceValues replaces placeholders in the values map with corresponding values from the output map
-func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, string, error) {
-    var clusterValue string
+func replaceWorkspaceValues(values map[string]interface{}, output map[string]string) (map[string]interface{}, error) {
+    
     modifiedValues := make(map[string]interface{})
 
     for key, value := range values {
@@ -153,27 +153,23 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
         case string:
             replacedValue, err := replacePlaceholder(v, output)
             if err != nil {
-                return nil, "", err
+                return nil,  err
             }
             modifiedValues[key] = replacedValue
-            if key == "cluster" {
-                clusterValue = replacedValue
-            }
+           
         case map[string]interface{}:
-            nestedValues, nestedClusterValue, err := replaceWorkspaceValues(v, output)
+            nestedValues,  err := replaceWorkspaceValues(v, output)
             if err != nil {
-                return nil, "", err
+                return nil,  err
             }
             modifiedValues[key] = nestedValues
-            if nestedClusterValue != "" {
-                clusterValue = nestedClusterValue
-            }
+           
         default:
             modifiedValues[key] = value
         }
     }
 
-    return modifiedValues, clusterValue, nil
+    return modifiedValues,  nil
 }
 
 
@@ -323,7 +319,7 @@ func CreateApplicationSet(
    
 
     var modifiedValues map[string]interface{}
-    var cluster string
+    
 
     // Regular expression pattern to match Go template placeholders
 	placeholderPattern := `\{\{\.[^}]+\}\}`
@@ -349,7 +345,7 @@ func CreateApplicationSet(
         }
 
         // Replace placeholders with values from annotations
-        modifiedValues, cluster, err = replaceWorkspaceValues(convertedValues, annotations)
+        modifiedValues, err = replaceWorkspaceValues(convertedValues, annotations)
         if err != nil {
             return nil, err
         }
@@ -357,18 +353,7 @@ func CreateApplicationSet(
         logger.Info("No placeholders in values, continuing execution with default values")
         modifiedValues = convertedValues
 
-        // Extract the value of the key 'cluster' from convertedValues
-        if clusterValue, exists := convertedValues["cluster"]; exists {
-            if clusterStr, ok := clusterValue.(string); ok {
-                cluster = clusterStr
-            } else {
-                logger.Error("Cluster value is not a string")
-                return nil, nil
-            }
-        } else {
-            logger.Error("Cluster key not found in values")
-            return nil, nil
-        }
+       
     }
 
     // Modify Ingress hosts if preview is true
@@ -411,7 +396,7 @@ func CreateApplicationSet(
                             Clusters: &appv1alpha1.ClusterGenerator{
                                 Selector: metav1.LabelSelector{
                                     MatchLabels: map[string]string{
-                                        "environment": cluster,
+                                        "environment": environmentValue,
                                     },
                                 },
                             },
@@ -427,7 +412,7 @@ func CreateApplicationSet(
                 Clusters: &appv1alpha1.ClusterGenerator{
                     Selector: metav1.LabelSelector{
                         MatchLabels: map[string]string{
-                            "environment": cluster,
+                            "environment": environmentValue,
                         },
                     },
                 },

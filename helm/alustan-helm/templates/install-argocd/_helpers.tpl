@@ -16,8 +16,7 @@ helm.sh/chart: {{ include "install-argocd.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/hook: post-install
-helm.sh/hook-weight: "0"
+
 {{- end }}
 
 {{/*
@@ -26,8 +25,7 @@ Selector labels
 {{- define "install-argocd.selectorLabels" -}}
 app.kubernetes.io/name: install-argocd
 app.kubernetes.io/instance: {{ .Release.Name }}
-helm.sh/hook: post-install
-helm.sh/hook-weight: "0"
+
 {{- end }}
 
 
