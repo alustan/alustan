@@ -487,11 +487,13 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
         finalizing = true
     }
 
-    taggedImageName, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
+    latestTag, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
     commonStatus = mergeStatuses(commonStatus, registryStatus)
     if registryStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error getting tagged image name")
     }
+
+	taggedImageName := fmt.Sprintf("%s:%s", observed.Spec.ContainerRegistry.ImageName, latestTag)
 
     c.logger.Infof("taggedImageName: %v", taggedImageName)
 
@@ -501,7 +503,7 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
     }
 
    // Handle RunService and process its status and error
-    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, finalizing)
+    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, latestTag, finalizing)
 	
 	commonStatus = mergeStatuses(commonStatus, runServiceStatus)
 	

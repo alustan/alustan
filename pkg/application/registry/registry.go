@@ -65,9 +65,9 @@ func HandleContainerRegistry(
 		return "", status
 	}
 
-	taggedImageName := fmt.Sprintf("%s:%s", image, latestTag)
+	
 
-	return taggedImageName, status
+	return latestTag, status
 }
 
 func getRegistryClient(provider, token string) (imagetag.RegistryClientInterface, error) {

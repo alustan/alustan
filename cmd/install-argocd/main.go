@@ -276,7 +276,7 @@ func installArgoCDWithHelm(logger *zap.SugaredLogger, clientset kubernetes.Inter
 			err = upgradeArgoCD(actionConfig, chart, vals, logger)
 		} else {
 			// If the release does not exist, perform a new installation
-			err = installArgoCD(actionConfig, chart, vals, logger)
+			err = installArgoCD(actionConfig, chart, vals, logger,clientset)
 		}
 
 		if err != nil {
@@ -307,21 +307,32 @@ func upgradeArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals 
 	return nil
 }
 
-func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger) error {
+
+
+func installArgoCD(actionConfig *action.Configuration, chart *chart.Chart, vals map[string]interface{}, logger *zap.SugaredLogger, clientset kubernetes.Interface) error {
+	namespace := "argocd"
+
+	// Check if namespace exists
+	nsExists, err := namespaceExists(namespace, clientset)
+	if err != nil {
+		return fmt.Errorf("failed to check if namespace %s exists: %w", namespace, err)
+	}
+
 	install := action.NewInstall(actionConfig)
 	install.ReleaseName = "argo-cd"
-	install.Namespace = "argocd"
-	install.CreateNamespace = true
+	install.Namespace = namespace
+	install.CreateNamespace = !nsExists
 	install.Wait = true
 	install.Timeout = 20 * time.Minute // Set timeout to 20 minutes
 	install.Atomic = true // Enable atomic option
 
-	_, err := install.Run(chart, vals)
+	_, err = install.Run(chart, vals)
 	if err != nil {
 		return fmt.Errorf("failed to install ArgoCD with Helm: %w", err)
 	}
 	return nil
 }
+
 
 func RetryBackoff() wait.Backoff {
 	return wait.Backoff{
@@ -428,6 +439,19 @@ func storeSSHKeyFromEnv(argoClient argocdclient.Client, logger *zap.SugaredLogge
     }
     defer repoCloser.Close()
 
+    // Check if credentials for the org URL already exist
+    credsList, err := repoCredsClient.ListRepositoryCredentials(context.Background(), &repocreds.RepoCredsQuery{})
+    if err != nil {
+        return fmt.Errorf("failed to list repository credentials: %v", err)
+    }
+
+    for _, creds := range credsList.Items {
+        if creds.URL == orgURL {
+            logger.Info("SSH repo secret already exists for the provided URL")
+            return nil
+        }
+    }
+
     // Create the request to store the SSH repo secret
     credsRequest := &repocreds.RepoCredsCreateRequest{
         Upsert: true,
@@ -451,6 +475,7 @@ func storeSSHKeyFromEnv(argoClient argocdclient.Client, logger *zap.SugaredLogge
     return nil
 }
 
+
 // Validate SSH private key using golang/crypto/ssh
 func isValidSSHPrivateKey(key string) error {
    
@@ -459,4 +484,16 @@ func isValidSSHPrivateKey(key string) error {
         return fmt.Errorf("failed to parse private key: %v", err)
     }
     return nil
+}
+
+
+func namespaceExists(namespace string, clientset kubernetes.Interface) (bool, error) {
+	_, err := clientset.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

@@ -40,7 +40,7 @@ func RunService(
     dynamicClient dynamic.Interface,
     appSetClient   applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
-    secretName, key string,
+    secretName, key, latestTag string,
     finalizing bool,
 ) (v1alpha1.AppStatus, error) {
 
@@ -74,7 +74,7 @@ func RunService(
     }
 
     // Proceed with creating the ApplicationSet
-    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, observed, secretName, key)
+    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, observed, secretName, key, latestTag)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
@@ -172,7 +172,6 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
     return modifiedValues,  nil
 }
 
-
 // modifyIngressHost modifies the host values in Ingress resources
 func modifyIngressHost(values map[string]interface{}, preview bool, prefix string) map[string]interface{} {
     modifiedValues := make(map[string]interface{})
@@ -186,32 +185,19 @@ func modifyIngressHost(values map[string]interface{}, preview bool, prefix strin
                     switch iv := ingressValue.(type) {
                     case []interface{}:
                         if ingressKey == "hosts" {
-                            var updatedHosts []interface{}
-                            for _, host := range iv {
-                                hostStr, ok := host.(string)
-                                if ok && preview {
-                                    hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
-                                }
-                                updatedHosts = append(updatedHosts, hostStr)
-                            }
-                            ingressMap[ingressKey] = updatedHosts
-                        } else if ingressKey == "tls" {
-                            for _, tlsItem := range iv {
-                                tlsMap, ok := tlsItem.(map[string]interface{})
+                            for _, hostItem := range iv {
+                                hostMap, ok := hostItem.(map[string]interface{})
                                 if ok {
-                                    if tlsHosts, exists := tlsMap["hosts"]; exists {
-                                        var updatedTlsHosts []interface{}
-                                        for _, tlsHost := range tlsHosts.([]interface{}) {
-                                            tlsHostStr, ok := tlsHost.(string)
-                                            if ok && preview {
-                                                tlsHostStr = fmt.Sprintf("%s-%s", prefix, tlsHostStr)
-                                            }
-                                            updatedTlsHosts = append(updatedTlsHosts, tlsHostStr)
+                                    if host, exists := hostMap["host"]; exists {
+                                        hostStr, ok := host.(string)
+                                        if ok && preview {
+                                            hostStr = fmt.Sprintf("%s-%s", prefix, hostStr)
                                         }
-                                        tlsMap["hosts"] = updatedTlsHosts
+                                        hostMap["host"] = hostStr
                                     }
                                 }
                             }
+                            ingressMap[ingressKey] = iv
                         }
                     }
                 }
@@ -276,19 +262,16 @@ func convertRawExtensionsToInterface(values map[string]runtime.RawExtension) (ma
 	return result, nil
 }
 
-
-
 func CreateApplicationSet(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
-   
-    appSetClient   applicationset.ApplicationSetServiceClient,
+    appSetClient applicationset.ApplicationSetServiceClient,
     observed *v1alpha1.App,
-    secretName, key string,
+    secretName, key, latestTag string,
 ) (*appv1alpha1.ApplicationSetStatus, error) {
 
     argocdNamespace := "argocd"
-    secretTypeLabel := "alustan.io/secret-type"
+    secretTypeLabel := "alustan.io/secret-type" 
     secretTypeValue := "cluster"
     environmentLabel := "environment"
     environmentValue := observed.Spec.Environment
@@ -316,15 +299,13 @@ func CreateApplicationSet(
         logger.Errorf("Failed to convert values: %v", err)
         return nil, fmt.Errorf("failed to convert values: %v", err)
     }
-   
 
     var modifiedValues map[string]interface{}
-    
 
     // Regular expression pattern to match Go template placeholders
-	placeholderPattern := `\{\{\.[^}]+\}\}`
+    placeholderPattern := `\{\{\.[^}]+\}\}`
     
-    // Check if values contain go template placeholders 
+    // Check if values contain Go template placeholders 
     if containsPlaceholders(convertedValues, placeholderPattern) {
         logger.Info("Values contain placeholders. Fetching annotations.")
         annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
@@ -352,8 +333,6 @@ func CreateApplicationSet(
     } else {
         logger.Info("No placeholders in values, continuing execution with default values")
         modifiedValues = convertedValues
-
-       
     }
 
     // Modify Ingress hosts if preview is true
@@ -364,9 +343,26 @@ func CreateApplicationSet(
 
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
-    
 
-  
+    // Add image.tag and ingress.prefix parameters to Helm parameters
+    var helmParameters []appv1alpha1.HelmParameter
+    if preview {
+        helmParameters = []appv1alpha1.HelmParameter{
+            {
+                Name:  "image.tag",
+                Value: "{{.branch}}-{{.number}}",
+            },
+           
+        }
+        targetRevision = "{{.head_sha}}"
+    } else {
+        helmParameters = []appv1alpha1.HelmParameter{
+            {
+                Name:  "image.tag",
+                Value: latestTag,
+            },
+        }
+    }
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
@@ -458,7 +454,7 @@ func CreateApplicationSet(
             Template: appv1alpha1.ApplicationSetTemplate{
                 ApplicationSetTemplateMeta: templateMeta,
                 Spec: appv1alpha1.ApplicationSpec{
-                    Project: "default",
+                    Project:    "default",
                     Destination: templateDestination,
                     SyncPolicy: &appv1alpha1.SyncPolicy{
                         Automated: &appv1alpha1.SyncPolicyAutomated{},
@@ -473,6 +469,7 @@ func CreateApplicationSet(
                         Helm: &appv1alpha1.ApplicationSourceHelm{
                             ReleaseName: releaseName,
                             Values:      helmValues,
+                            Parameters:  helmParameters,
                         },
                     },
                 },
@@ -485,8 +482,7 @@ func CreateApplicationSet(
     var createdAppset *appv1alpha1.ApplicationSet
 
     err = retry.OnError(retry.DefaultRetry, errors.IsInternalError, func() error {
-      
-    createdAppset, err = appSetClient.Create(context.Background(), &applicationset.ApplicationSetCreateRequest{
+        createdAppset, err = appSetClient.Create(context.Background(), &applicationset.ApplicationSetCreateRequest{
             Applicationset: appSet,
         })
         return err
@@ -501,6 +497,7 @@ func CreateApplicationSet(
 
     return &createdAppset.Status, nil
 }
+
 
 
 

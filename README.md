@@ -6,6 +6,14 @@
 
 - Leverages **argocd apiclient** abstracting its complexities into a unified solution
 
+- Therefore can gain visibility into running application using `argo ui`
+
+> `kubectl port-forward svc/argo-cd-argocd-server -n argocd 8080:443`
+
+- To get Admin Password
+
+> `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode`
+
  **App-controller**
 
 - The `App controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
@@ -18,11 +26,6 @@ kind: App
 spec:
   environment: staging
 ```
-- Ability to deploy services and specify dependency pattern which will be respected when provisioning and destroying
-
-- All dependent services should be deployed in same namespace
-
-> 
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -34,9 +37,10 @@ spec:
 
   ```
 
-- The level of abstraction largely depends on the structure of your helm values file and your terraform variables file
+- Ability to deploy services and specify dependency pattern which will be respected when provisioning and destroying
 
->
+- All dependent services should be deployed in same namespace
+
 ```yaml
 apiVersion: alustan.io/v1alpha1
 kind: App
@@ -48,14 +52,13 @@ spec:
     targetRevision: main
     values:
       image:
-        repository: alustan/web:1.1.0
-      service: frontend}
+        repository: alustan/web
+      service: frontend
       ...
 ```
 
-- To reference deployed infrastructure variables in your application use `{{.NAME}}` **go template** this will be automatically populated for you. the `NAME` field should be same as that stored in **alustan cluster secret**
+- The level of abstraction largely depends on the structure of your helm values file and your terraform variables file
 
-> 
 ```yaml
 apiVersion: alustan.io/v1alpha1
 kind: App
@@ -65,14 +68,19 @@ values:
    
 ```
 
+- To reference deployed infrastructure variables in your application use `{{.NAME}}` **go template** this will be automatically populated for you. the `NAME` field should be same as that stored in **alustan cluster secret**
+
+ 
 -  Peculiarities when `preview environment` is enabled
 
-**Your Pullrequest label `tag` should be `preview`**
+*Your Pullrequest label `tag` should be `preview`*
 
-**For private git repo: provide `gitToken` in helm values file**
+*Image tag should be "{{branch-name}}-{{pr-number}}"*
 
-> If you wish to expose the application running on an ephemeral environment via `Ingress` the controller expects the Ingress field to be structured as specified below in your helm chart so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
-> 
+*For private git repo: provide `gitToken` in helm values file*
+
+> If you wish to expose the application running on an ephemeral environment via `Ingress` the controller expects the Ingress field to be structured as specified below so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
+
 ```yaml
 apiVersion: alustan.io/v1alpha1
 kind: App
@@ -86,9 +94,7 @@ spec:
       ingress:
         hosts:
         - host: chart-example.local
-        tls: 
-        - hosts:
-          - chart-example.local
+        
   ```
 
 -  Scans your container registry every `5 mins`  and uses the latest image that satisfies the specified `semantic tag constraint`.
@@ -105,6 +111,7 @@ spec:
     semanticVersion: ">=0.2.0"
 
 ```
+
 - `status field` The Status field consists of the followings:
 
 > **`state`: Current state - `Progressing` `Error` `Failed` `Blocked` `Completed`**
@@ -120,7 +127,7 @@ spec:
 
 - Specify the **environment**, this will create or update argocd in-cluster secret label with the specified environment under the hood, wiil be used by `app-controller` to determine the cluster to deploy to`
 
-> will first check if argocd cluster secret exists with specified label *may be manually created by user* before attempting to create one
+> will first check if argocd cluster secret exists with specified label *may be manually created when provisioning infrastructure* before attempting to create one
 
 > the **Terraform workload environment** should match the **App workload environment** 
 
@@ -133,8 +140,6 @@ spec:
   environment: staging
 ```
 
-- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
-
 ```yaml
 variables:
   TF_VAR_workspace: staging
@@ -144,12 +149,8 @@ variables:
   TF_VAR_vpc_cidr: "10.1.0.0/16"
 
 ```
-- This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
 
-> The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
-
-**Sample [deploy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/deploy) and [destroy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/destroy) script in GO**
-
+- The variables should be prefixed with `TF_VAR_` since any `env` variable prefixed with `TF_VAR_` automatically overrides terraform defined variables
 
 ```yaml
 scripts:
@@ -158,11 +159,12 @@ scripts:
 
 ```
 
-- `postDeploy` is an additional flexibility tool that will enable end users write a custom script that will be run by the controller and `output` stored in status field.
+- This should be the path to your `deploy` and `destroy` script; specifying just `deploy` or `destroy` assumes the script to be in the root level of your repository
 
-> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure/blob/main/postdeploy) (could be any scripting language) that reaches out to aws api and retrieves metadata and health status of provisioned cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
+> The `destroy` script should be `omitted` if when custom resource is being finalized (deleted from git repository) you don't wish to destroy your infrastructure
 
-> The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
+**Sample [deploy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/deploy) and [destroy](https://github.com/alustan/infrastructure/blob/main/setup/cmd/destroy) script in GO**
+
 
 ```yaml
 postDeploy:
@@ -172,6 +174,14 @@ postDeploy:
     region: TF_VAR_region
 
 ``` 
+
+- `postDeploy` is an additional flexibility tool that will enable end users write a custom script that will be run by the controller and `output` stored in status field.
+
+> An example implementation was a custom GO script [aws-resource](https://github.com/alustan/infrastructure/blob/main/postdeploy) (could be any scripting language) that reaches out to aws api and retrieves metadata and health status of provisioned cloud resources with a specific tag and subsequently stores the output in the custom resource `postDeployOutput` status field.
+
+> The script expects two argument `workspace` and `region` and the values are supposed to be retrieved from env variables specified by users in this case `TF_VAR_workspace` and `TF_VAR_region`
+
+
 > **The output of your `postDeploy` script should have key: as `outputs`, body: `any arbitrary data structure`**
 
 ```yaml
@@ -314,7 +324,8 @@ spec:
     targetRevision: main
     values:
       service: backend
-      image: alustan/backend:0.2.0
+      image: 
+        repository: alustan/web
       config:
         DB_URL: "postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}"
 
@@ -342,15 +353,12 @@ spec:
     targetRevision: main
     values:
       image:
-        repository: alustan/web:1.1.0
+        repository: alustan/web
       service: frontend
       ingress:
         hosts:
          - host: chart-example.local
-        tls: 
-        - hosts:
-            - chart-example.local
-      
+       
   containerRegistry:
     provider: docker
     imageName: alustan/web
@@ -361,6 +369,50 @@ spec:
 
 
 ```
+## Recommended gitops directory structure
+
+```
+.
+├── applications
+│   ├── dev
+│   │   ├── dev-backend-app.yaml
+│   │   ├── dev-infra.yaml
+│   │   └── dev-web-app.yaml
+│   ├── prod
+│   │   ├── prod-backend-app.yaml
+│   │   ├── prod-infra.yaml
+│   │   └── prod-web-app.yaml
+│   └── staging
+│       ├── staging-backend-app.yaml
+│       ├── staging-infra.yaml
+│       └── staging-web-app.yaml
+└── infrastructure
+    ├── dev-infra.yaml
+    ├── prod-infra.yaml
+    └── staging-infra.yaml
+```
+- the **control cluster** can be made to sync `infrastructure` directory which is basically `Terraform` custom resources
+
+- Each bootstrapped cluster can sync it's specific application `environment` thereby ensuring that each cluster `reconciles` it self aside that done by the control cluster, in addition also reconciles it's dependent applications
+
+## Existing argocd cluster configuration
+
+- The controller skips argocd installation
+
+- Skips argocd `repo-creds`creation if found in-cluster with same giturl
+
+- skips argocd `cluster secret ` creation if found in-cluster with same label
+
+- **The controller using username `admin` and `initial argocd password` to generate and refresh authentication token**
+
+> Therefore if the initial admin password has been disabled, you can regenerate or recreate with a new admin password 
+
+```
+kubectl create secret generic argocd-initial-admin-secret -n argocd --from-literal=password="$PASSWORD"
+```
+
+> this will be used to generate and refresh api token
+
 
 **Check Out:**
 
