@@ -145,6 +145,8 @@ spec:
 
 ```
 
+- For preview environment setup refer to `README` documentation
+
 ## Pull Request
 
 This repository requires a [Developer Certificate of Origin (DCO)](https://developercertificate.org/) signature. 

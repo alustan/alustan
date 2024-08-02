@@ -172,7 +172,6 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
     return modifiedValues,  nil
 }
 
-// updateImageTag updates the tag value under the image key in the provided values map
 func updateImageTag(values map[string]interface{}, newTag string) map[string]interface{} {
 	updatedValues := make(map[string]interface{})
 
@@ -188,6 +187,17 @@ func updateImageTag(values map[string]interface{}, newTag string) map[string]int
 			} else {
 				updatedValues[key] = updateImageTag(v, newTag)
 			}
+		case []interface{}:
+			// Handle slice of maps for cases like containers in the spec
+			var updatedSlice []interface{}
+			for _, item := range v {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					updatedSlice = append(updatedSlice, updateImageTag(itemMap, newTag))
+				} else {
+					updatedSlice = append(updatedSlice, item)
+				}
+			}
+			updatedValues[key] = updatedSlice
 		default:
 			updatedValues[key] = value
 		}
@@ -195,6 +205,7 @@ func updateImageTag(values map[string]interface{}, newTag string) map[string]int
 
 	return updatedValues
 }
+
 
 // modifyIngressHost modifies the host values in Ingress resources
 func modifyIngressHost(values map[string]interface{}, preview bool, prefix string) map[string]interface{} {
@@ -360,6 +371,7 @@ func CreateApplicationSet(
     }
 
     modifiedValues =  updateImageTag(modifiedValues, latestTag)
+    logger.Infof("Image tag successfully updated to %s", latestTag)
 
     // Modify Ingress hosts if preview is true
     if preview {
@@ -370,7 +382,8 @@ func CreateApplicationSet(
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
 
-  
+  // Log the final helmValues to ensure the updated tag is included
+    logger.Infof("Final Helm values: %s", helmValues)
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
