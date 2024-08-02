@@ -371,7 +371,7 @@ func CreateApplicationSet(
     }
 
     modifiedValues =  updateImageTag(modifiedValues, latestTag)
-    logger.Infof("Image tag successfully updated to %s", latestTag)
+    
 
     // Modify Ingress hosts if preview is true
     if preview {
@@ -382,8 +382,7 @@ func CreateApplicationSet(
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
 
-  // Log the final helmValues to ensure the updated tag is included
-    logger.Infof("Final Helm values: %s", helmValues)
+ 
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
