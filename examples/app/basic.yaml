@@ -10,16 +10,16 @@ kind: App
 metadata:
   name: web-service
 spec:
-  environment: default
+  environment: staging
   source:
     repoURL: https://github.com/alustan/cluster-manifests
     path: basic-demo
     releaseName: basic-demo
     targetRevision: main
     values:
-      cluster: "{{.CLUSTER_NAME}}"
       service: frontend
-      image: alustan/web-app-demo:1.0.0
+      image: 
+        repository: alustan/web-app-demo
       config:
         DUMMY_1: "{{.dummy_output_1}}"
         DUMMY_2: "{{.dummy_output_2}}"

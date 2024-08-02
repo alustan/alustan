@@ -6,7 +6,7 @@ Contributions are what makes the open source community such an amazing place to 
 
 - create an issue
 
-- develop in a `feat` branch
+- develop in a `feat-` branch
 
 - make a pull request
 
@@ -58,13 +58,13 @@ base64 -w 0 secret.json
 
 ```
 
-- `helm install controller alustan-helm  --debug`
+- `helm install controller alustan-helm --timeout 20m0s --debug`
 
 - `kubectl logs <terraform-controller-pod> -n alustan`
 
 - `kubectl logs <app-controller-pod> -n alustan`
 
-> Ensure argocd server is successfully running
+> Ensure controller components are up and running
 
 
 **Terraform controller**
@@ -81,8 +81,9 @@ kind: Terraform
 metadata:
   name: dummy
 spec:
+  environment: staging
   variables:
-    TF_VAR_workspace: "default"
+    TF_VAR_workspace: "staging"
     TF_VAR_region: "us-east-1"
     TF_VAR_provision_cluster: "true"
     TF_VAR_provision_db: "false"
@@ -109,7 +110,7 @@ spec:
 
 - Apply `terraform manifest`
 
-- If you prefer to run terraform locally `git clone https://github.com/alustan/basic-example.git`, uncomment **alustan namespace** and **config_path** in gitops module and run `./deploy.sh`
+- If you prefer to run terraform locally `git clone https://github.com/alustan/basic-example.git`, check the `readme` for instructions 
 
 - You can apply the manifest below and observe progress 
 
@@ -121,19 +122,19 @@ kind: App
 metadata:
   name: web-service
 spec:
-  workspace: default
+  environment: staging
   source:
     repoURL: https://github.com/alustan/cluster-manifests
     path: basic-demo
     releaseName: basic-demo
     targetRevision: main
     values:
-      cluster: ${workspace.CLUSTER_NAME}
       service: frontend
-      image: alustan/web-app-demo:1.0.0
+      image: 
+        repository: alustan/web-app-demo
       config:
-        DUMMY_1: ${workspace.dummy_output_1}
-        DUMMY_2: ${workspace.dummy_output_2}
+        DUMMY_1: "{{.dummy_output_1}}"
+        DUMMY_2: "{{.dummy_output_2}}"
 
   containerRegistry:
     provider: docker

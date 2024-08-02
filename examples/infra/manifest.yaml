@@ -27,7 +27,7 @@ spec:
       workspace: TF_VAR_workspace
       region: TF_VAR_region
   containerRegistry:
-    provider: docker
+    provider: docker #ghcr
     imageName: alustan/infrastructure # image name to be pulled by the controller
     semanticVersion: "~1.0.0" # semantic constraint
 

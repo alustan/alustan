@@ -465,8 +465,6 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
     key := "pat"
     gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
 
-  
-
     commonStatus := v1alpha1.AppStatus{
         State:   "Progressing",
         Message: "Starting processing",
@@ -487,32 +485,37 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
         finalizing = true
     }
 
-    latestTag, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
-    commonStatus = mergeStatuses(commonStatus, registryStatus)
-    if registryStatus.State == "Error" {
-        return commonStatus, fmt.Errorf("error getting tagged image name")
+    var latestTag string
+    if observed.Spec.PreviewEnvironment.Enabled {
+        latestTag = "{{.branch}}-{{.number}}"
+    } else {
+        latestTag, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
+        commonStatus = mergeStatuses(commonStatus, registryStatus)
+        if registryStatus.State == "Error" {
+            return commonStatus, fmt.Errorf("error getting tagged image name")
+        }
+		
+		taggedImageName := fmt.Sprintf("%s:%s", observed.Spec.ContainerRegistry.ImageName, latestTag)
+        c.logger.Infof("taggedImageName: %v", taggedImageName)
     }
 
-	taggedImageName := fmt.Sprintf("%s:%s", observed.Spec.ContainerRegistry.ImageName, latestTag)
-
-    c.logger.Infof("taggedImageName: %v", taggedImageName)
+    
 
     err = Kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(c.logger, c.Clientset, observed.ObjectMeta.Namespace, secretName, key, gitHubPATBase64)
     if err != nil {
         return commonStatus, fmt.Errorf("Failed to create/update secret: %v", err)
     }
 
-   // Handle RunService and process its status and error
+    // Handle RunService and process its status and error
     runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, latestTag, finalizing)
-	
-	commonStatus = mergeStatuses(commonStatus, runServiceStatus)
-	
-	if runServiceErr != nil {
+    commonStatus = mergeStatuses(commonStatus, runServiceStatus)
+    if runServiceErr != nil {
         return commonStatus, fmt.Errorf("error running service: %v", runServiceErr)
     }
 
-   return commonStatus, nil
+    return commonStatus, nil
 }
+
 
 
 // Define the helper function to check if HealthStatus is empty
