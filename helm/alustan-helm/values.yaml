@@ -64,4 +64,4 @@ argocdConfig: |
   redis:
     image:
       repository: redis
-      tag: 7.2.4-alpinee
+      tag: 7.2.4-alpine

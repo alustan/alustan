@@ -489,32 +489,37 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
     if observed.Spec.PreviewEnvironment.Enabled {
         latestTag = "{{.branch}}-{{.number}}"
     } else {
-        latestTag, registryStatus := registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
+        var registryStatus v1alpha1.AppStatus
+        latestTag, registryStatus = registry.HandleContainerRegistry(c.logger, c.Clientset, observed)
         commonStatus = mergeStatuses(commonStatus, registryStatus)
         if registryStatus.State == "Error" {
+            c.logger.Errorf("Error getting tagged image name: %v", registryStatus.Message)
             return commonStatus, fmt.Errorf("error getting tagged image name")
         }
-		
-		taggedImageName := fmt.Sprintf("%s:%s", observed.Spec.ContainerRegistry.ImageName, latestTag)
+
+        taggedImageName := fmt.Sprintf("%s:%s", observed.Spec.ContainerRegistry.ImageName, latestTag)
         c.logger.Infof("taggedImageName: %v", taggedImageName)
     }
 
-    
+    c.logger.Infof("latestTag: %v", latestTag)
 
     err = Kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(c.logger, c.Clientset, observed.ObjectMeta.Namespace, secretName, key, gitHubPATBase64)
     if err != nil {
-        return commonStatus, fmt.Errorf("Failed to create/update secret: %v", err)
+        c.logger.Errorf("Failed to create/update secret: %v", err)
+        return commonStatus, fmt.Errorf("failed to create/update secret: %v", err)
     }
 
     // Handle RunService and process its status and error
     runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, latestTag, finalizing)
     commonStatus = mergeStatuses(commonStatus, runServiceStatus)
     if runServiceErr != nil {
+        c.logger.Errorf("Error running service: %v", runServiceErr)
         return commonStatus, fmt.Errorf("error running service: %v", runServiceErr)
     }
 
     return commonStatus, nil
 }
+
 
 
 
