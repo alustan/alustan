@@ -14,6 +14,14 @@
 
 > `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode`
 
+- Has 2 decoupled controllers `Terraform` and `App`
+
+> can be used for just infrastructure provisioning
+
+> If you don't use terraform or not a big fan of infrastructure gitops, the `App` controller can be used in isolation.
+
+> **Only requirement is to store infrastructure metadata in `alustan cluster secret` as described below and also set up argocd cluster secret with the `environment label` specified in your app manifest**
+
  **App-controller**
 
 - The `App controller` extracts external resource metadata from **alustan cluster secret** annotations, therefore it is expected that when provisioning your infrastructure the metadata should be stored in annotations field of a secret with `label` **"alustan.io/secret-type": cluster** in namespace **alustan**
@@ -248,7 +256,7 @@ helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> -
 ```
 - Update helm **values** file with relevant `secrets`
 
-- `helm install controller alustan-helm --timeout 10m0s --debug`
+- `helm install controller alustan-helm --timeout 20m0s --debug`
 
 
 **To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
@@ -358,11 +366,7 @@ spec:
       ingress:
         hosts:
          - host: chart-example.local
-       
-  containerRegistry:
-    provider: docker
-    imageName: alustan/web
-    semanticVersion: "~1.1.0"
+ 
   dependencies:
     service: 
     - api-service
@@ -373,7 +377,7 @@ spec:
 
 ```
 .
-├── applications
+├── environment
 │   ├── dev
 │   │   ├── dev-backend-app.yaml
 │   │   ├── dev-infra.yaml
@@ -393,7 +397,11 @@ spec:
 ```
 - the **control cluster** can be made to sync `infrastructure` directory which is basically `Terraform` custom resources
 
-- Each bootstrapped cluster can sync it's specific application `environment` thereby ensuring that each cluster `reconciles` it self aside that done by the control cluster, in addition also reconciles it's dependent applications
+> For the `control-cluster` add `environment: "control"` into argocd cluster secret this will ensure that the control cluster only syncs infrastructure resources and not application resources due to the design of the project.
+
+> **however if you wish to deploy any application to the conttrol cluster just specify `environment:control` in the `app manifest` and ensure the control cluster points to the manifest in git**
+
+- Each bootstrapped cluster can sync it's specific  `environment` thereby ensuring that each cluster `reconciles` it self aside that done by the control cluster, in addition also reconciles it's dependent applications
 
 ## Existing argocd cluster configuration
 
@@ -413,6 +421,13 @@ kubectl create secret generic argocd-initial-admin-secret -n argocd --from-liter
 
 > this will be used to generate and refresh api token
 
+- Ensure not terminate `tls` at argocd server level
+
+```
+server:
+  extraArgs:
+    - --insecure
+```
 
 **Check Out:**
 

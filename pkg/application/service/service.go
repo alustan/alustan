@@ -350,7 +350,7 @@ func CreateApplicationSet(
         helmParameters = []appv1alpha1.HelmParameter{
             {
                 Name:  "image.tag",
-                Value: "{{.branch}}-{{.number}}",
+                Value: latestTag,
             },
            
         }

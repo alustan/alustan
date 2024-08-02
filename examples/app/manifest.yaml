@@ -19,12 +19,13 @@ spec:
     values:
       cluster: "{{.CLUSTER_NAME}}"
       service: backend
-      image: alustan/backend:0.2.0
+      image: 
+        repository: alustan/backend:0.2.0
       config:
         DB_URL: "postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}"
 
   containerRegistry:
-    provider: docker
+    provider: docker #ghcr
     imageName: alustan/backend
     semanticVersion: ">=0.2.0"
 
@@ -53,14 +54,7 @@ spec:
       ingress:
         hosts:
          - host: chart-example.local
-        tls: 
-        - hosts:
-            - chart-example.local
-      
-  containerRegistry:
-    provider: docker
-    imageName: alustan/web
-    semanticVersion: "~1.1.0"
+
   dependencies:
     service: 
     - api-service

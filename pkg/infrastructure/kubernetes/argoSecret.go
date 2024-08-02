@@ -58,7 +58,10 @@ func CreateOrUpdateArgoCluster(
 
         var defaultCluster *appv1alpha1.Cluster
         for _, cl := range clusters.Items {
-            if cl.Server == "https://kubernetes.default.svc" {
+            if env, exists := cl.Labels["environment"]; exists && env == "control" {
+                logger.Info("Found existing cluster with environment:control, returning without creating or updating a cluster.")
+                return true, nil
+            } else if cl.Server == "https://kubernetes.default.svc" {
                 defaultCluster = &cl
             } else if env, exists := cl.Labels["environment"]; exists && env == environment {
                 logger.Info("Found existing cluster with the specified environment, returning without creating or updating a cluster.")
