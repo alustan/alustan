@@ -482,28 +482,14 @@ func (c *Controller) handleSyncRequest(observed *v1alpha1.Terraform) (v1alpha1.T
     c.logger.Infof("taggedImageName: %v", taggedImageName)
 
     // Handle ExecuteTerraform
-    execTerraformStatus := terraform.ExecuteTerraform(c.logger,c.Clientset, c.dynClient, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
+    execTerraformStatus := terraform.ExecuteTerraform(c.logger,c.Clientset, c.dynClient, c.clusterClient, observed, scriptContent, taggedImageName, secretName, envVars, finalizing)
     commonStatus = mergeStatuses(commonStatus, execTerraformStatus)
 
     if execTerraformStatus.State == "Error" {
         return commonStatus, fmt.Errorf("error executing terraform")
     }
   
-	cluster := observed.Spec.Environment
-	if cluster == "" {
-		c.logger.Errorf("Observed Environment is empty")
-		commonStatus.State = "Error"
-		commonStatus.Message = "Observed Environment is empty"
-		return commonStatus, fmt.Errorf("observed Environment is empty")
-	}
-
-	err = Kubernetespkg.CreateOrUpdateArgoCluster(c.logger, c.clusterClient, "in-cluster", cluster)
-	if err != nil {
-		c.logger.Errorf("Failed to create or update ArgoCD secret: %v", err)
-		return commonStatus, fmt.Errorf("Failed to create or update ArgoCD secret: %v", err)
-	}
-
-    return commonStatus, nil
+   return commonStatus, nil
 }
 
 func mergeStatuses(baseStatus, newStatus v1alpha1.TerraformStatus) v1alpha1.TerraformStatus {

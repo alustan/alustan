@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/cluster"
 
 	kubernetesPkg "github.com/alustan/alustan/pkg/infrastructure/kubernetes"
 	
@@ -49,6 +50,7 @@ func ExecuteTerraform(
 	logger *zap.SugaredLogger,
 	clientset kubernetes.Interface,
 	dynamicClient dynamic.Interface,
+	clusterClient  clusterpkg.ClusterServiceClient,
 	observed *v1alpha1.Terraform,
 	scriptContent, taggedImageName, secretName string,
 	envVars map[string]string,
@@ -82,6 +84,15 @@ func ExecuteTerraform(
 	if status.State == "Failed" {
 		return finalStatus
 	}
+
+	cluster := observed.Spec.Environment
+
+	argoerr := kubernetesPkg.CreateOrUpdateArgoCluster(logger, clusterClient, "in-cluster", cluster)
+	if argoerr != nil {
+		logger.Errorf("Failed to create or update ArgoCD secret: %v", argoerr)
+	    return errorstatus.ErrorResponse(logger, "Failed to create or update ArgoCD secret", argoerr)
+	}
+
 
 	
    if observed.Spec.PostDeploy.Script != "" {
