@@ -61,6 +61,7 @@ spec:
     values:
       image:
         repository: alustan/web
+        tag: 1.0.0
       service: frontend
       ...
 ```
@@ -119,7 +120,24 @@ spec:
     semanticVersion: ">=0.2.0"
 
 ```
+> Ensure your helm `image tag` is structured as specified below, to enable automatic update
 
+```yaml
+apiVersion: alustan.io/v1alpha1
+kind: App
+metadata:
+  name: web-service
+spec:
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: basic-demo
+    releaseName: basic-demo
+    targetRevision: main
+    values:
+      image: 
+        repository: alustan/web-app-demo
+        tag: "1.0.0"
+```
 - `status field` The Status field consists of the followings:
 
 > **`state`: Current state - `Progressing` `Error` `Failed` `Blocked` `Completed`**
@@ -256,7 +274,7 @@ helm fetch oci://registry-1.docker.io/alustan/alustan-helm --version <version> -
 ```
 - Update helm **values** file with relevant `secrets`
 
-- `helm install controller alustan-helm --timeout 20m0s --debug`
+- `helm install controller alustan-helm --timeout 20m0s --debug --atomic`
 
 
 **To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
@@ -334,6 +352,7 @@ spec:
       service: backend
       image: 
         repository: alustan/web
+        tag: 1.0.0
       config:
         DB_URL: "postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}"
 
@@ -362,6 +381,7 @@ spec:
     values:
       image:
         repository: alustan/web
+        tag: 1.0.0
       service: frontend
       ingress:
         hosts:

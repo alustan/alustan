@@ -61,3 +61,7 @@ argocdConfig: |
   server:
     extraArgs:
       - --insecure
+  redis:
+    image:
+      repository: redis
+      tag: 7.2.4-alpinee

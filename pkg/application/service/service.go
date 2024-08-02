@@ -172,6 +172,30 @@ func replaceWorkspaceValues(values map[string]interface{}, output map[string]str
     return modifiedValues,  nil
 }
 
+// updateImageTag updates the tag value under the image key in the provided values map
+func updateImageTag(values map[string]interface{}, newTag string) map[string]interface{} {
+	updatedValues := make(map[string]interface{})
+
+	for key, value := range values {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			if key == "image" {
+				// Update the tag if it exists
+				if _, exists := v["tag"]; exists {
+					v["tag"] = newTag
+				}
+				updatedValues[key] = v
+			} else {
+				updatedValues[key] = updateImageTag(v, newTag)
+			}
+		default:
+			updatedValues[key] = value
+		}
+	}
+
+	return updatedValues
+}
+
 // modifyIngressHost modifies the host values in Ingress resources
 func modifyIngressHost(values map[string]interface{}, preview bool, prefix string) map[string]interface{} {
     modifiedValues := make(map[string]interface{})
@@ -335,6 +359,8 @@ func CreateApplicationSet(
         modifiedValues = convertedValues
     }
 
+    modifiedValues =  updateImageTag(modifiedValues, latestTag)
+
     // Modify Ingress hosts if preview is true
     if preview {
         logger.Info("Preview environment enabled. Modifying Ingress hosts.")
@@ -344,25 +370,7 @@ func CreateApplicationSet(
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
 
-    // Add image.tag and ingress.prefix parameters to Helm parameters
-    var helmParameters []appv1alpha1.HelmParameter
-    if preview {
-        helmParameters = []appv1alpha1.HelmParameter{
-            {
-                Name:  "image.tag",
-                Value: latestTag,
-            },
-           
-        }
-        targetRevision = "{{.head_sha}}"
-    } else {
-        helmParameters = []appv1alpha1.HelmParameter{
-            {
-                Name:  "image.tag",
-                Value: latestTag,
-            },
-        }
-    }
+  
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
@@ -469,7 +477,7 @@ func CreateApplicationSet(
                         Helm: &appv1alpha1.ApplicationSourceHelm{
                             ReleaseName: releaseName,
                             Values:      helmValues,
-                            Parameters:  helmParameters,
+                           
                         },
                     },
                 },

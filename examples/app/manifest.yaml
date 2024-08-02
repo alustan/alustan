@@ -20,7 +20,8 @@ spec:
       cluster: "{{.CLUSTER_NAME}}"
       service: backend
       image: 
-        repository: alustan/backend:0.2.0
+        repository: alustan/backend
+        tag: "1.0.0"
       config:
         DB_URL: "postgresql://{{.DB_USER}}:{{.DB_PASSWORD}}@postgres:5432/{{.DB_NAME}}"
 
@@ -49,7 +50,8 @@ spec:
     values:
       cluster: "{{.CLUSTER_NAME}}"
       image:
-        repository: alustan/web:1.1.0
+        repository: alustan/web
+        tag: "1.0.0"
       service: frontend
       ingress:
         hosts:

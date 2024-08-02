@@ -58,7 +58,7 @@ base64 -w 0 secret.json
 
 ```
 
-- `helm install controller alustan-helm --timeout 20m0s --debug`
+- `helm install controller alustan-helm --timeout 20m0s --debug --atomic`
 
 - `kubectl logs <terraform-controller-pod> -n alustan`
 
@@ -132,6 +132,7 @@ spec:
       service: frontend
       image: 
         repository: alustan/web-app-demo
+        tag: 1.0.0
       config:
         DUMMY_1: "{{.dummy_output_1}}"
         DUMMY_2: "{{.dummy_output_2}}"
