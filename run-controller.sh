@@ -12,6 +12,14 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | xargs)
 fi
 
+# Sanitize environment variables
+DOCKER_USERNAME=$(echo "$DOCKER_USERNAME" | tr -d '\r')
+DOCKER_TOKEN=$(echo "$DOCKER_TOKEN" | tr -d '\r')
+HELM_VERSION=$(echo "$HELM_VERSION" | tr -d '\r')
+GIT_TOKEN=$(echo "$GIT_TOKEN" | tr -d '\r')
+GIT_ORG_URL=$(echo "$GIT_ORG_URL" | tr -d '\r')
+GIT_SSH_SECRET=$(echo "$GIT_SSH_SECRET" | tr -d '\r')
+
 # Authenticate with Docker Hub
 echo "$DOCKER_TOKEN" | docker login --username "$DOCKER_USERNAME" --password-stdin
 
