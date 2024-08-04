@@ -16,16 +16,16 @@ fi
 echo "$DOCKER_TOKEN" | docker login --username "$DOCKER_USERNAME" --password-stdin
 
 # Pull the images from Docker Hub
-docker pull alustan/example:1.23.4
-docker pull alustan/web-app-demo:1.23.4
+docker pull alustan/example:0.30.0
+docker pull alustan/web-app-demo:1.0.12
 
 # Tag the images
-docker tag alustan/example:1.23.4 "$DOCKER_USERNAME"/example:1.23.4
-docker tag alustan/web-app-demo:1.23.4 "$DOCKER_USERNAME"/web-app-demo:1.23.4
+docker tag alustan/example:0.30.0 "$DOCKER_USERNAME"/example:0.30.0
+docker tag alustan/web-app-demo:1.0.12 "$DOCKER_USERNAME"/web-app-demo:1.0.12
 
 # Push the images to your registry
-docker push "$DOCKER_USERNAME"/example:1.23.4
-docker push "$DOCKER_USERNAME"/web-app-demo:1.23.4
+docker push "$DOCKER_USERNAME"/example:0.30.0
+docker push "$DOCKER_USERNAME"/web-app-demo:1.0.12
 
 # Generate Docker config and encode it in base64
 DOCKER_CONFIG_JSON=$(cat ~/.docker/config.json | base64 -w 0)
