@@ -106,6 +106,10 @@ spec:
         
   ```
 
+*Retrieve the previewURls*
+
+> kubectl get app <web-service> -n default -o json | jq '.status.previewURLs'
+
 -  Scans your container registry every `5 mins`  and uses the latest image that satisfies the specified `semantic tag constraint`.
 
 > The default `appSyncInterval` can be changed in the controller helm values file
@@ -259,6 +263,9 @@ spec:
 
 > **`postDeployOutput`: Custom field to store output of your `postdeploy` script if specified**
 
+## *Quickstart*
+
+- [quick setup on github codespace](./quick-setup.md) 
 
 ## setup
 
@@ -350,6 +357,7 @@ spec:
     targetRevision: main
     values:
       service: backend
+      cluster: "{{.CLUSTER_NAME}}"
       image: 
         repository: alustan/web
         tag: 1.0.0
@@ -441,7 +449,7 @@ kubectl create secret generic argocd-initial-admin-secret -n argocd --from-liter
 
 > this will be used to generate and refresh api token
 
-- Ensure not terminate `tls` at argocd server level
+- Ensure `not` to terminate `tls` at argocd server level
 
 ```
 server:

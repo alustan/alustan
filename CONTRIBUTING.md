@@ -133,6 +133,11 @@ spec:
       image: 
         repository: alustan/web-app-demo
         tag: 1.0.0
+      database:
+        connection:
+          host: "{{.DB_NAME}}"
+          user: "{{.DB_USER}}"
+          password: "{{.DB_PASSWORD}}"
       config:
         DUMMY_1: "{{.dummy_output_1}}"
         DUMMY_2: "{{.dummy_output_2}}"
@@ -145,7 +150,23 @@ spec:
 
 ```
 
+> **Check running application in the browser `http://localhost:3000`**
+
 - For preview environment setup refer to `README` documentation
+
+*Retrieve the previewURls*
+
+> kubectl get app web-service -n default -o json | jq '.status.previewURLs'
+
+*Add `host` to your `etc file` to be able to access the preview application locally*
+
+> `sudo nano /etc/hosts`
+
+> Add entry `127.0.0.1    preview.localhost`
+
+> `ctrl x` and `Enter` to save and exit
+
+*Open deployed application in the browser*
 
 ## Pull Request
 

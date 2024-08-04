@@ -20,7 +20,12 @@ spec:
       service: frontend
       image: 
         repository: alustan/web-app-demo
-        tag: "1.0.0"
+        tag: "1.0.1"
+      database:
+        connection:
+          host: "{{.DB_NAME}}"
+          user: "{{.DB_USER}}"
+          password: "{{.DB_PASSWORD}}"
       config:
         DUMMY_1: "{{.dummy_output_1}}"
         DUMMY_2: "{{.dummy_output_2}}"
@@ -28,4 +33,4 @@ spec:
   containerRegistry:
     provider: docker
     imageName: alustan/web-app-demo
-    semanticVersion: ">=1.0.0"
+    semanticVersion: ">=0.2.0"
