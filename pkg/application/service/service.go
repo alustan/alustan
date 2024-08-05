@@ -636,19 +636,18 @@ func CheckApplicationSetHealth(logger *zap.SugaredLogger, appSetClient applicati
 
 
 
-
 func ExtractDependencies(observed *v1alpha1.App) []string {
     if observed.Spec.Dependencies.Service == nil {
         return nil
     }
-    
+
     var dependencies []string
     for _, dep := range observed.Spec.Dependencies.Service {
-        for _, serviceName := range dep {
-            dependencies = append(dependencies, serviceName)
+        if name, exists := dep["name"]; exists {
+            dependencies = append(dependencies, name)
         }
     }
-    
+
     return dependencies
 }
 
