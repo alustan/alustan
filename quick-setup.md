@@ -26,7 +26,7 @@
 
 **For preview applications**
 
-- kubectl apply -f examples/infra/preview.yaml
+- kubectl apply -f examples/app/preview.yaml
 
 > This repository `https://github.com/alustan/web-app-demo` already has an **open pullrequest** for testing purpose
 
@@ -38,7 +38,7 @@
 
 > `sudo nano /etc/hosts`
 
-> Add entry `127.0.0.1    <branch-pr>-preview.localhost`
+> Add entry `127.0.0.1    feat-8-preview.localhost`
 
 > `ctrl x` and `Enter` to save and exit
 

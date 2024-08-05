@@ -64,7 +64,7 @@ func RunService(
     dependencies := ExtractDependencies(observed)
 
     // Check if all dependent ApplicationSets are healthy before proceeding
-    namespace := observed.Namespace
+    namespace := "argocd"
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
