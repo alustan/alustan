@@ -1,0 +1,29 @@
+---
+apiVersion: alustan.io/v1alpha1
+kind: App
+metadata:
+  name: preview-service
+spec:
+  environment: staging
+  previewEnvironment:
+    enabled: true
+    gitOwner: alustan
+    gitRepo: web-app-demo
+    intervalSeconds: 600
+  source:
+    repoURL: https://github.com/alustan/cluster-manifests
+    path: basic-demo
+    releaseName: basic-demo-preview
+    targetRevision: main
+    values:
+      image:
+        repository: alustan/web-app-demo
+        tag: "1.0.0"
+      service: "preview"
+      ingress:
+        hosts:
+         - host: preview.localhost
+ 
+  dependencies:
+    service: 
+    - web-service

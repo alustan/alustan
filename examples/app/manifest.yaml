@@ -48,7 +48,6 @@ spec:
     releaseName: web-application
     targetRevision: main
     values:
-      cluster: "{{.CLUSTER_NAME}}"
       image:
         repository: alustan/web
         tag: "1.0.0"

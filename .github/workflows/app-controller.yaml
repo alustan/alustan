@@ -47,7 +47,7 @@ jobs:
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: alustan/app-controller
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/app-controller
           flavor: |
             latest=false
           tags: |

@@ -12,6 +12,7 @@ docs/book
 cover.out
 dist/
 __debug*
+.env
 
 
 
