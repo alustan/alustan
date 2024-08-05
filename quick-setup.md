@@ -28,6 +28,8 @@
 
 - kubectl apply -f examples/infra/preview.yaml
 
+> This repository `https://github.com/alustan/web-app-demo` already has an **open pullrequest** for testing purpose
+
 *Retrieve the previewURls*
 
 > kubectl get app < web-service > -n default -o json | jq '.status.previewURLs'
