@@ -5,9 +5,6 @@
 echo "on-create start"
 echo "$(date +'%Y-%m-%d %H:%M:%S')    on-create start" >> "$HOME/status"
 
-# Add the non-root user to the Docker group
-sudo usermod -aG docker $USERNAME
-
 # clone repos
 git clone https://github.com/cse-labs/imdb-app /workspaces/imdb-app
 git clone https://github.com/microsoft/webvalidate /workspaces/webvalidate
