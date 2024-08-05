@@ -16,6 +16,7 @@ sudo apt-get install curl -y
 sudo apt-get install make -y
 
 installgo() {
+  sudo rm -rf /usr/local/go
   curl -OL https://golang.org/dl/go1.22.2.linux-amd64.tar.gz
   sudo tar -C /usr/local -xvf go1.22.2.linux-amd64.tar.gz 
 
@@ -53,6 +54,8 @@ docker push "$DOCKER_USERNAME"/web-app-demo:1.0.13
 
 # Generate Docker config and encode it in base64
 DOCKER_CONFIG_JSON=$(cat ~/.docker/config.json | base64 -w 0)
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 
 # Create the namespace
 kubectl create ns alustan
