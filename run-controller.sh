@@ -17,7 +17,7 @@ sudo apt-get install make -y
 
 installgo() {
   curl -OL https://golang.org/dl/go1.22.2.linux-amd64.tar.gz
-  sudo tar -C /usr/local -xvf go1.22.2.linux-amd64.tar.gz -y
+  sudo tar -C /usr/local -xvf go1.22.2.linux-amd64.tar.gz 
 
   # Add Go to PATH
   echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
