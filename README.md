@@ -86,7 +86,7 @@ spec:
 apiVersion: alustan.io/v1alpha1
 kind: App
 metadata:
-  name: web-service
+  name: preview-service
 spec:
   environment: staging
   previewEnvironment:
@@ -96,22 +96,20 @@ spec:
     intervalSeconds: 600
   source:
     repoURL: https://github.com/alustan/cluster-manifests
-    path: application-helm
-    releaseName: web-application
+    path: basic-demo
+    releaseName: basic-demo-preview
     targetRevision: main
     values:
       image:
-        repository: alustan/web
-        tag: 1.0.0
-      service: frontend
+        repository: horizonclient/web-app-demo
+        tag: "1.0.0"
+      service: "preview"
       ingress:
         hosts:
-         - host: chart-example.local
- 
+          - host: preview.localhost
   dependencies:
-    service: 
-    - api-service
-
+    service:
+      - name: api-service
 
 ```
 
@@ -192,7 +190,7 @@ kind: App
 spec:
   dependencies:
     service: 
-    - api-service
+     - name: api-service
 
   ```
 
