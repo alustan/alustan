@@ -52,7 +52,7 @@ To get started with the project , you need to install the following tools:
 
 *Retrieve the previewURls*
 
-> kubectl get app web-service -n default -o json | jq '.status.previewURLs'
+> kubectl get app < web-service > -n default -o json | jq '.status.previewURLs'
 
 *Add `host` to your `etc file` to be able to access the preview application locally*
 

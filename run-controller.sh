@@ -5,6 +5,29 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | xargs)
 fi
 
+# Check if yq is installed
+if ! command -v yq &> /dev/null; then
+    echo "yq is not installed. Installing..."
+    sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+    sudo chmod a+x /usr/local/bin/yq
+fi
+
+sudo apt-get install curl -y
+sudo apt-get install make -y
+
+installgo() {
+  curl -OL https://golang.org/dl/go1.22.2.linux-amd64.tar.gz
+  sudo tar -C /usr/local -xvf go1.22.2.linux-amd64.tar.gz -y
+
+  # Add Go to PATH
+  echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
+  
+  # Source the updated profile
+  source ~/.profile
+}
+
+installgo
+
 # Sanitize environment variables
 DOCKER_USERNAME=$(echo "$DOCKER_USERNAME" | tr -d '\r')
 DOCKER_TOKEN=$(echo "$DOCKER_TOKEN" | tr -d '\r')
