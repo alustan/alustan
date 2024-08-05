@@ -67,10 +67,6 @@ nodes:
   - containerPort: 443
     hostPort: 443
     protocol: TCP
-containerdConfigPatches:
-- |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5500"]
-    endpoint = ["http://kind-registry:5000"]
 EOF
 
 echo "building IMDb"
