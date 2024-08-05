@@ -2,15 +2,17 @@
 
 Contributions are what makes the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-- fork and clone repo
+- fork and clone `https://github.com/alustan/alustan`
 
 - create an issue
 
-- develop in a `feat-` branch
+- develop 
 
 - make a pull request
 
 ## Requirement
+
+> **if using [codespace setup](./quick-setup.md) , these tools are already installed**
 
 To get started with the project , you need to install the following tools:
 1. Go 1.22+. 
@@ -19,20 +21,17 @@ To get started with the project , you need to install the following tools:
 4. Kubernets cluster (local/remote)
 5. kubectl
 
-## Relevant repositories to fork and clone
+- Setup relevant github action workflow secrets `DOCKERHUB_USERNAME` `DOCKERHUB_TOKEN` `RELEASE_MAIN`
 
-- `https://github.com/alustan/alustan`
+> `RELEASE_MAIN` should have **administrative** `read` and `write` permission
 
-- `https://github.com/alustan/basic-example`
+> This will be required to build your own `controller image` and `helm chart`
 
-- `https://github.com/alustan/web-app-demo`
+- Run `make help`: for relevant make commands
 
+## Develop
 
-> Setup relevant github action workflow secrets `Docker username` `Docker token`
-
-> Run `make help`: for relevant make commands
-
-## Development
+- [quick setup on github codespace](./quick-setup.md) 
 
 - `make build-infra` to ensure you can succesfully build terraform binary locally
 
@@ -40,119 +39,16 @@ To get started with the project , you need to install the following tools:
 
 - Build and push image to your own registry using the provided **github workflow**
 
-- fetch and untar the helm chart 
+- Ensure `DEVELOP="true"` in **.env** file before running `./run-controller.sh`
 
-```sh
-helm fetch oci://registry-1.docker.io/<registry name>/alustan-helm --version <version> --untar=true
-```
+> `kubectl logs <terraform-controller-pod> -n alustan`
 
-- generate your `containerRegistrySecret` and add to helm **values** file
+> `kubectl logs <app-controller-pod> -n alustan`
 
-**To obtain `containerRegistrySecret` to be supplied to the helm chart: RUN the script below and copy the encoded secret** 
-
-```sh
-rm ~/.docker/config.json
-docker login -u <YOUR_DOCKERHUB_USERNAME> -p <YOUR_DOCKERHUB_PAT>
-cat ~/.docker/config.json > secret.json
-base64 -w 0 secret.json 
-
-```
-
-- `helm install controller alustan-helm --timeout 20m0s --debug --atomic`
-
-- `kubectl logs <terraform-controller-pod> -n alustan`
-
-- `kubectl logs <app-controller-pod> -n alustan`
-
-> Ensure controller components are up and running
+- Ensure controller components are up and running
 
 
-**Terraform controller**
-
-- To quickly test functionality locally
-
-- You can apply the manifest below and observe progress 
-
-> replace **imageName** with your built image and relevant **semanticVersion**
-
-```yaml
-apiVersion: alustan.io/v1alpha1
-kind: Terraform
-metadata:
-  name: dummy
-spec:
-  environment: staging
-  variables:
-    TF_VAR_workspace: "staging"
-    TF_VAR_region: "us-east-1"
-    TF_VAR_provision_cluster: "true"
-    TF_VAR_provision_db: "false"
-    TF_VAR_vpc_cidr: "10.0.0.0/16"
-  scripts:
-    deploy: deploy.sh
-    destroy: destroy.sh
-  postDeploy:
-    script: postdeploy.sh
-    args:
-      workspace: TF_VAR_workspace
-      region: TF_VAR_region
-  containerRegistry:
-    provider: docker
-    imageName: alustan/example  #build your own image from this repo alustan/basic-example since the 
-                               # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
-    semanticVersion: ">=0.1.0"
-
-```
-
-**App controller**
-
-- should have installed `alustan-helm` into your cluster
-
-- Apply `terraform manifest`
-
-- If you prefer to run terraform locally `git clone https://github.com/alustan/basic-example.git`, check the `readme` for instructions 
-
-- You can apply the manifest below and observe progress 
-
-> replace **imageName** with your built image and relevant **semanticVersion**
-
-```yaml
-apiVersion: alustan.io/v1alpha1
-kind: App
-metadata:
-  name: web-service
-spec:
-  environment: staging
-  source:
-    repoURL: https://github.com/alustan/cluster-manifests
-    path: basic-demo
-    releaseName: basic-demo
-    targetRevision: main
-    values:
-      service: frontend
-      image: 
-        repository: alustan/web-app-demo
-        tag: 1.0.0
-      database:
-        connection:
-          host: "{{.DB_NAME}}"
-          user: "{{.DB_USER}}"
-          password: "{{.DB_PASSWORD}}"
-      config:
-        DUMMY_1: "{{.dummy_output_1}}"
-        DUMMY_2: "{{.dummy_output_2}}"
-
-  containerRegistry:
-    provider: docker
-    imageName: alustan/web-app-demo #build your own image from this repo alustan/web-app-demo since the 
-                               # controller will require access to your registry to get tags that match   semantic constraint. Add registry secret to helm values files as specified in Readme before installing the helm chart in a k8s cluster
-    semanticVersion: ">=1.0.0"
-
-```
-
-> **Check running application in the browser `http://localhost:3000`**
-
-- For preview environment setup refer to `README` documentation
+- **For preview environment setup refer to `README` documentation**
 
 *Retrieve the previewURls*
 
@@ -162,7 +58,7 @@ spec:
 
 > `sudo nano /etc/hosts`
 
-> Add entry `127.0.0.1    preview.localhost`
+> Add entry `127.0.0.1    <branch-pr>-preview.localhost`
 
 > `ctrl x` and `Enter` to save and exit
 
