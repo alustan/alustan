@@ -24,6 +24,8 @@
 
 	// forward ports for the app
 	"forwardPorts": [
+		3000,
+		8080,
 		30000,
 		30080,
 		31080,
@@ -32,6 +34,8 @@
 
 	// add labels
 	"portsAttributes": {
+		"3000": { "label": "guestbook" },
+		"8080": { "label": "argocd" },
 		"30000": { "label": "Prometheus" },
 		"30080": { "label": "IMDb App" },
 		"31080": { "label": "Heartbeat" },
