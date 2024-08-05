@@ -62,7 +62,9 @@ kubectl create ns alustan
 
 # Update the imageName field in the YAML configuration using yq
 yq --inplace ".spec.containerRegistry.imageName = \"${DOCKER_USERNAME}/example\"" examples/infra/basic.yaml
+yq --inplace ".spec.source.values.image.repository = \"${DOCKER_USERNAME}/example\"" examples/app/basic.yaml
 yq --inplace ".spec.containerRegistry.imageName = \"${DOCKER_USERNAME}/web-app-demo\"" examples/app/basic.yaml
+yq --inplace ".spec.source.values.image.repository = \"${DOCKER_USERNAME}/web-app-demo\"" examples/app/preview.yaml
 
 # Check if DEVELOP is true
 if [ "$DEVELOP" = "true" ]; then

@@ -20,12 +20,31 @@
 
 > kubectl logs < app-controller-pod > -n alustan
 
+- View running application in the browser
+
+> http://localhost:3000
+
+**For preview applications**
+
+- kubectl apply -f examples/infra/preview.yaml
+
+*Retrieve the previewURls*
+
+> kubectl get app < web-service > -n default -o json | jq '.status.previewURLs'
+
+*Add `host` to your `etc file` to be able to access the preview application locally*
+
+> `sudo nano /etc/hosts`
+
+> Add entry `127.0.0.1    <branch-pr>-preview.localhost`
+
+> `ctrl x` and `Enter` to save and exit
+
+*Open deployed application in the browser*
+
 - View deployed application in argocd ui
 
 > `kubectl port-forward svc/argo-cd-argocd-server -n argocd 8080:443`
 
 > `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode`
 
-- View running application in the browser
-
-> http://localhost:3000

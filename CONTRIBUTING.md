@@ -23,7 +23,7 @@ To get started with the project , you need to install the following tools:
 
 - Setup relevant github action workflow secrets `DOCKERHUB_USERNAME` `DOCKERHUB_TOKEN` `RELEASE_MAIN`
 
-> `RELEASE_MAIN` should have **administrative** `read` and `write` permission
+> `RELEASE_MAIN` should have **administrative** `repo_read` and `repo_write` permission
 
 > This will be required to build your own `controller image` and `helm chart`
 
@@ -47,22 +47,6 @@ To get started with the project , you need to install the following tools:
 
 - Ensure controller components are up and running
 
-
-- **For preview environment setup refer to `README` documentation**
-
-*Retrieve the previewURls*
-
-> kubectl get app < web-service > -n default -o json | jq '.status.previewURLs'
-
-*Add `host` to your `etc file` to be able to access the preview application locally*
-
-> `sudo nano /etc/hosts`
-
-> Add entry `127.0.0.1    <branch-pr>-preview.localhost`
-
-> `ctrl x` and `Enter` to save and exit
-
-*Open deployed application in the browser*
 
 ## Pull Request
 

@@ -439,10 +439,6 @@ base64 -w 0 secret.json
 
 > Therefore if the initial admin password has been disabled, you can regenerate or recreate with a new admin password 
 
-```
-kubectl create secret generic argocd-initial-admin-secret -n argocd --from-literal=password="$PASSWORD"
-```
-
 > this will be used to generate and refresh api token
 
 - Ensure `not` to terminate `tls` at argocd server level
