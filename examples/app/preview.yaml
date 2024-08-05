@@ -16,7 +16,7 @@ spec:
     targetRevision: main
     values:
       image:
-        repository: horizonclient/web-app-demo
+        repository: alustan/web-app-demo
         tag: "1.0.0"
       service: "preview"
       ingress:
