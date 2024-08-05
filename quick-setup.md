@@ -38,7 +38,7 @@
 
 > `sudo nano /etc/hosts`
 
-> Add entry `127.0.0.1    <branch-pr>-preview.localhost`
+> Add entry `127.0.0.1    feat-8-preview.localhost`
 
 > `ctrl x` and `Enter` to save and exit
 
