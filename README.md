@@ -106,7 +106,7 @@ spec:
       service: "preview"
       ingress:
         hosts:
-          - host: preview.localhost
+          - host: preview.guestbook
   dependencies:
     service:
       - name: api-service
@@ -118,6 +118,8 @@ spec:
 ## *Quickstart*
 
 - [quick setup on github codespace](./quick-setup.md) 
+
+> **Setup and test functionality of this project in less than a minute on `codespace`**
 
 
  **App-controller**
@@ -238,7 +240,7 @@ spec:
 
 > **`previewURLs`: Urls of running applications in the ephemeral environment**
 
-> **`healthStatus`: This basically holds refrence to argocd applicationset status**
+> **`healthStatus`: This basically holds reference to argocd application status**
 
 
 **Terraform-controller**

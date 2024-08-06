@@ -1,10 +1,12 @@
 ## *Quick setup*
 
+> **Setup and test functionality of this project in less than a minute on `codespace`**
+
 - fork and clone `https://github.com/alustan/alustan.git`
 
 - Enable and load `github codespace` either in the browser or locally in `vscode`
 
-> This will use `.devcontainer` configuration
+> This will use the repository `.devcontainer` configuration
 
 - Copy `.env.example` to `.env` and provide necessary `env` variables
 
@@ -14,15 +16,11 @@
 
 - kubectl apply -f examples/infra/basic.yaml
 
-> kubectl logs < terraform-controller-pod > -n alustan
+> kubectl get terraform dummy -n default -o json | jq '.status'
 
 - kubectl apply -f examples/app/basic.yaml
 
-> kubectl logs < app-controller-pod > -n alustan
-
-- View running application in the browser
-
-> http://localhost:3000
+> kubectl get app web-service -n default -o json | jq '.status'
 
 **For preview applications**
 
@@ -32,21 +30,17 @@
 
 *Retrieve the previewURls*
 
-> kubectl get app < web-service > -n default -o json | jq '.status.previewURLs'
+> kubectl get app preview-service -n default -o json | jq '.status.previewURLs'
 
-*Add `host` to your `etc file` to be able to access the preview application locally*
+*To access codespace urls of forwarded ports*
 
-> `sudo nano /etc/hosts`
+> Open the Command Palette by pressing Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac).
 
-> Add entry `127.0.0.1    feat-8-preview.localhost`
+> Type "Ports" and select `Ports: Focus on Ports View.`
 
-> `ctrl x` and `Enter` to save and exit
+- Access `argocd` `web-service` and `preview-service` UI in the browser
 
-*Open deployed application in the browser*
-
-- View deployed application in argocd ui
-
-> `kubectl port-forward svc/argo-cd-argocd-server -n argocd 8080:443`
+- To get argocd admin secret
 
 > `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode`
 

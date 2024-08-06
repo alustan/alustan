@@ -25,8 +25,8 @@
 	// forward ports for the app
 	"forwardPorts": [
 		80,
-		443,
 		3000,
+		8000,
 		8080,
 		30000,
 		30080,
@@ -37,8 +37,8 @@
 	// add labels
 	"portsAttributes": {
 		"80": { "label": "ingress-http" },
-		"443": { "label": "ingress-https" },
 		"3000": { "label": "guestbook" },
+		"8000": { "label": "guestbook-preview" },
 		"8080": { "label": "argocd" },
 		"30000": { "label": "Prometheus" },
 		"30080": { "label": "IMDb App" },

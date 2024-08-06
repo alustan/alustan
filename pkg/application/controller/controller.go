@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"os"
+	
 	"bytes"
    
     "encoding/json"
@@ -465,10 +465,7 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.ApplicationSetServiceClient, appClient applicationpkg.ApplicationServiceClient,observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
-    secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
-    key := "pat"
-    gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
-
+    
     commonStatus := v1alpha1.AppStatus{
         State:   "Progressing",
         Message: "Starting processing",
@@ -507,14 +504,9 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
 
     c.logger.Infof("latestTag: %v", latestTag)
 
-    err = Kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(c.logger, c.Clientset, observed.ObjectMeta.Namespace, secretName, key, gitHubPATBase64)
-    if err != nil {
-        c.logger.Errorf("Failed to create/update secret: %v", err)
-        return commonStatus, fmt.Errorf("failed to create/update secret: %v", err)
-    }
-
+    
     // Handle RunService and process its status and error
-    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, appClient, observed, secretName, key, latestTag, finalizing)
+    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, appClient, observed, latestTag, finalizing)
     commonStatus = mergeStatuses(commonStatus, runServiceStatus)
     if runServiceErr != nil {
         c.logger.Errorf("Error running service: %v", runServiceErr)
@@ -528,7 +520,7 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
 
 
 // Define the helper function to check if HealthStatus is empty
-func isEmptyApplicationSetStatus(status appv1alpha1.ApplicationSetStatus) bool {
+func isEmptyApplicationSetStatus(status appv1alpha1.ApplicationStatus ) bool {
     return len(status.Conditions) == 0
 }
  

@@ -9,6 +9,7 @@ import (
     "regexp"
     "bytes"
 	"text/template"
+    "os"
 	
     "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
@@ -37,16 +38,29 @@ import (
 func RunService(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
-    
     dynamicClient dynamic.Interface,
-    appSetClient   applicationset.ApplicationSetServiceClient,
+    appSetClient applicationset.ApplicationSetServiceClient,
     appClient application.ApplicationServiceClient,
     observed *v1alpha1.App,
-    secretName, key, latestTag string,
+    latestTag string,
     finalizing bool,
 ) (v1alpha1.AppStatus, error) {
 
     var status v1alpha1.AppStatus
+    secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
+    key := "pat"
+    gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
+
+    // Only create or update the secret if the GITHUB_TOKEN is set
+    if gitHubPATBase64 != "" {
+        err := kubernetespkg.CreateOrUpdateSecretWithGitHubPAT(logger, clientset, "argocd", secretName, key, gitHubPATBase64)
+        if err != nil {
+            logger.Errorf("Failed to create/update secret: %v", err)
+            return status, fmt.Errorf("failed to create/update secret: %v", err)
+        }
+    } else {
+        logger.Warn("GITHUB_TOKEN environment variable is not set, skipping secret creation")
+    }
 
     if finalizing {
         logger.Info("Attempting to delete application")
@@ -65,18 +79,17 @@ func RunService(
     // Extract dependencies
     dependencies := ExtractDependencies(observed)
 
-    // Check if all dependent ApplicationSets are healthy before proceeding
-    namespace := "argocd"
+    // Check if all dependent ApplicationSets are healthy and synced before proceeding
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
-    err := WaitForAllDependenciesHealthAndSyncStatus(logger, appClient, dependencies, namespace, retryInterval, timeout)
+    err := WaitForAllDependenciesHealthAndSyncStatus(logger, appClient, dependencies, retryInterval, timeout)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err), err
     }
 
     // Proceed with creating the ApplicationSet
-    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, observed, secretName, key, latestTag)
+    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, appClient, observed, secretName, key, latestTag)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
@@ -303,12 +316,13 @@ func CreateApplicationSet(
     logger *zap.SugaredLogger,
     clientset kubernetes.Interface,
     appSetClient applicationset.ApplicationSetServiceClient,
+    appClient application.ApplicationServiceClient, 
     observed *v1alpha1.App,
     secretName, key, latestTag string,
-) (*appv1alpha1.ApplicationSetStatus, error) {
+) (*appv1alpha1.ApplicationStatus, error) { // Changed the return type to *appv1alpha1.ApplicationStatus
 
     argocdNamespace := "argocd"
-    secretTypeLabel := "alustan.io/secret-type" 
+    secretTypeLabel := "alustan.io/secret-type"
     secretTypeValue := "cluster"
     environmentLabel := "environment"
     environmentValue := observed.Spec.Environment
@@ -341,8 +355,8 @@ func CreateApplicationSet(
 
     // Regular expression pattern to match Go template placeholders
     placeholderPattern := `\{\{\.[^}]+\}\}`
-    
-    // Check if values contain Go template placeholders 
+
+    // Check if values contain Go template placeholders
     if containsPlaceholders(convertedValues, placeholderPattern) {
         logger.Info("Values contain placeholders. Fetching annotations.")
         annotations, err := fetchSecretAnnotations(clientset, secretTypeLabel, secretTypeValue, environmentLabel, environmentValue)
@@ -372,8 +386,7 @@ func CreateApplicationSet(
         modifiedValues = convertedValues
     }
 
-    modifiedValues =  updateImageTag(modifiedValues, latestTag)
-    
+    modifiedValues = updateImageTag(modifiedValues, latestTag)
 
     // Modify Ingress hosts if preview is true
     if preview {
@@ -384,7 +397,17 @@ func CreateApplicationSet(
     // Convert modifiedValues to Helm string format
     helmValues := formatValuesAsHelmString(logger, modifiedValues)
 
- 
+    // Check if the secret exists
+    var secretExists bool
+    _, err = clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+    if err == nil {
+        secretExists = true
+    } else if errors.IsNotFound(err) {
+        secretExists = false
+    } else {
+        logger.Errorf("Failed to check if secret exists: %v", err)
+        return nil, err
+    }
 
     var generators []appv1alpha1.ApplicationSetGenerator
 
@@ -392,23 +415,29 @@ func CreateApplicationSet(
     if preview {
         logger.Info("Defining generators for preview environment.")
         requeueAfterSeconds := int64(requeueAfterSeconds)
+        pullRequestGenerator := appv1alpha1.PullRequestGenerator{
+            Github: &appv1alpha1.PullRequestGeneratorGithub{
+                Owner:  gitOwner,
+                Repo:   gitRepo,
+                Labels: []string{"preview"},
+            },
+            RequeueAfterSeconds: &requeueAfterSeconds,
+        }
+
+        // Add TokenRef if the secret exists
+        if secretExists {
+            pullRequestGenerator.Github.TokenRef = &appv1alpha1.SecretRef{
+                SecretName: secretName,
+                Key:        key,
+            }
+        }
+
         generators = []appv1alpha1.ApplicationSetGenerator{
             {
                 Matrix: &appv1alpha1.MatrixGenerator{
                     Generators: []appv1alpha1.ApplicationSetNestedGenerator{
                         {
-                            PullRequest: &appv1alpha1.PullRequestGenerator{
-                                Github: &appv1alpha1.PullRequestGeneratorGithub{
-                                    Owner:  gitOwner,
-                                    Repo:   gitRepo,
-                                    Labels: []string{"preview"},
-                                    TokenRef: &appv1alpha1.SecretRef{
-                                        SecretName: secretName,
-                                        Key:        key,
-                                    },
-                                },
-                                RequeueAfterSeconds: &requeueAfterSeconds,
-                            },
+                            PullRequest: &pullRequestGenerator,
                         },
                         {
                             Clusters: &appv1alpha1.ClusterGenerator{
@@ -491,7 +520,6 @@ func CreateApplicationSet(
                         Helm: &appv1alpha1.ApplicationSourceHelm{
                             ReleaseName: releaseName,
                             Values:      helmValues,
-                           
                         },
                     },
                 },
@@ -501,10 +529,9 @@ func CreateApplicationSet(
 
     logger.Info("Creating ApplicationSet in ArgoCD.")
 
-    var createdAppset *appv1alpha1.ApplicationSet
-
+  
     err = retry.OnError(retry.DefaultRetry, errors.IsInternalError, func() error {
-        createdAppset, err = appSetClient.Create(context.Background(), &applicationset.ApplicationSetCreateRequest{
+        _, err = appSetClient.Create(context.Background(), &applicationset.ApplicationSetCreateRequest{
             Applicationset: appSet,
         })
         return err
@@ -517,7 +544,21 @@ func CreateApplicationSet(
 
     logger.Infof("Successfully applied ApplicationSet '%s' using ArgoCD", appSet.Name)
 
-    return &createdAppset.Status, nil
+    // Wait for a short duration before checking the application status
+    time.Sleep(30 * time.Second)
+
+    // Retrieve the status of the created application
+    app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
+        Name:      &name,
+       })
+    if err != nil {
+        logger.Errorf("Failed to get application status: %v", err)
+        return nil, err
+    }
+
+    logger.Infof("Successfully retrieved application status for '%s'", name)
+
+    return &app.Status, nil
 }
 
 
@@ -615,11 +656,11 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
 }
 
 
-func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName, namespace string) (bool, error) {
+func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName string) (bool, error) {
     // Retrieve the Application
     app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
         Name:      &appName,      
-		AppNamespace: &namespace, 
+		
     })
     if err != nil {
         logger.Error(err.Error())
@@ -659,7 +700,7 @@ func WaitForAllDependenciesHealthAndSyncStatus(
     logger *zap.SugaredLogger, 
     appClient application.ApplicationServiceClient,
     dependencies []string, 
-    namespace string, 
+    
     retryInterval, timeout time.Duration,
 ) error {
     ticker := time.NewTicker(retryInterval)
@@ -678,7 +719,7 @@ func WaitForAllDependenciesHealthAndSyncStatus(
         case <-ticker.C: // Execute every retryInterval
             allHealthyAndSynced := true
             for dep := range dependencyStatus {
-                healthyAndSynced, err := CheckApplicationHealthAndSyncStatus(logger, appClient, dep, namespace)
+                healthyAndSynced, err := CheckApplicationHealthAndSyncStatus(logger, appClient, dep)
                 if err != nil {
                     return err // Return if an error occurs
                 }
