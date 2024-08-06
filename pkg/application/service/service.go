@@ -544,10 +544,15 @@ func CreateApplicationSet(
 
     logger.Infof("Successfully applied ApplicationSet '%s' using ArgoCD", appSet.Name)
 
+    // Wait for a short period to allow the ApplicationSet to be processed
+    time.Sleep(15 * time.Second)
+
     // Retrieve the status of the created application
+    appNamespace := "argocd"
     app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
-        Name:      &name,
-       })
+        Name:        &name,
+        AppNamespace: &appNamespace,
+    })
     if err != nil {
         logger.Errorf("Failed to get application status: %v", err)
         return nil, err
@@ -655,8 +660,10 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
 
 func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName string) (bool, error) {
     // Retrieve the Application
+    appNamespace := "argocd"
     app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
-        Name:      &appName,      
+        Name:      &appName, 
+        AppNamespace: &appNamespace,   
 		
     })
     if err != nil {
