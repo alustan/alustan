@@ -24,6 +24,8 @@
 
 	// forward ports for the app
 	"forwardPorts": [
+		80,
+		443,
 		3000,
 		8080,
 		30000,
@@ -34,6 +36,8 @@
 
 	// add labels
 	"portsAttributes": {
+		"80": { "label": "ingress-http" },
+		"443": { "label": "ingress-https" },
 		"3000": { "label": "guestbook" },
 		"8080": { "label": "argocd" },
 		"30000": { "label": "Prometheus" },

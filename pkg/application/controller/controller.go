@@ -37,6 +37,8 @@ import (
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	
 	applicationsetpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
+	applicationpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+
 	
 	
 	
@@ -74,6 +76,7 @@ type Controller struct {
     managerStopCh chan struct{}
 	argoClient   apiclient.Client
 	appSetClient   applicationsetpkg.ApplicationSetServiceClient
+	appClient    applicationpkg.ApplicationServiceClient
 	
 	
 	
@@ -265,6 +268,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 		
 			 c.logger.Info("Successfully created ArgoCD client")
              c.logger.Infof("Successfully created ApplicationSet client")
+			 c.logger.Infof("Successfully created Applicationclient")
 			 c.logger.Info("App controller successfuly instantiated!!!")
 
 				// Start processing items
@@ -427,7 +431,7 @@ func (c *Controller) processNextWorkItem() bool {
 
 		if gen > observedGeneration {
 			// Perform synchronization and update observed generation
-			finalStatus, err := c.handleSyncRequest(c.appSetClient,app)
+			finalStatus, err := c.handleSyncRequest(c.appSetClient,c.appClient,app)
 			if finalStatus.Message == "Destroy completed successfully" {
                return nil
 			}
@@ -460,7 +464,7 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.ApplicationSetServiceClient, observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
+func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.ApplicationSetServiceClient, appClient applicationpkg.ApplicationServiceClient,observed *v1alpha1.App) (v1alpha1.AppStatus, error) {
     secretName := fmt.Sprintf("%s-container-secret", observed.ObjectMeta.Name)
     key := "pat"
     gitHubPATBase64 := os.Getenv("GITHUB_TOKEN")
@@ -510,7 +514,7 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
     }
 
     // Handle RunService and process its status and error
-    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, observed, secretName, key, latestTag, finalizing)
+    runServiceStatus, runServiceErr := service.RunService(c.logger, c.Clientset, c.dynClient, appSetClient, appClient, observed, secretName, key, latestTag, finalizing)
     commonStatus = mergeStatuses(commonStatus, runServiceStatus)
     if runServiceErr != nil {
         c.logger.Errorf("Error running service: %v", runServiceErr)
@@ -708,12 +712,21 @@ func refreshClients(c *Controller, newToken string) error {
 
    
 
-   _, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
+   appsetconn, newAppSetClient, err := newArgoClient.NewApplicationSetClient()
     if err != nil {
        
         return fmt.Errorf("failed to create ApplicationSet client: %v", err)
     }
+
+	_, newappClient, err := newArgoClient.NewApplicationClient()
+	if err != nil {
+		appsetconn.Close()
+		return fmt.Errorf("failed to create Application client: %v", err)
+	}
+	
+
     c.appSetClient = newAppSetClient
+	c.appClient = newappClient
 
 
     return nil

@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
     applicationset "github.com/argoproj/argo-cd/v2/pkg/apiclient/applicationset"
+    application "github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
     "go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -39,6 +40,7 @@ func RunService(
     
     dynamicClient dynamic.Interface,
     appSetClient   applicationset.ApplicationSetServiceClient,
+    appClient application.ApplicationServiceClient,
     observed *v1alpha1.App,
     secretName, key, latestTag string,
     finalizing bool,
@@ -68,7 +70,7 @@ func RunService(
     retryInterval := 30 * time.Second
     timeout := 10 * time.Minute
 
-    err := WaitForAllDependenciesHealth(logger, appSetClient, dependencies, namespace, retryInterval, timeout)
+    err := WaitForAllDependenciesHealthAndSyncStatus(logger, appClient, dependencies, namespace, retryInterval, timeout)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Waiting for dependencies to become healthy", err), err
     }
@@ -613,25 +615,24 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
 }
 
 
-func CheckApplicationSetHealth(logger *zap.SugaredLogger, appSetClient applicationset.ApplicationSetServiceClient, appSetName, namespace string) (bool, error) {
-	// Retrieve the ApplicationSet
-	appSet, err := appSetClient.Get(context.Background(), &applicationset.ApplicationSetGetQuery{
-		Name:      appSetName,
-		AppsetNamespace: namespace,
-	})
-	if err != nil {
-		logger.Error(err.Error())
-		return false, err
-	}
+func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName, namespace string) (bool, error) {
+    // Retrieve the Application
+    app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
+        Name:      &appName,      
+		AppNamespace: &namespace, 
+    })
+    if err != nil {
+        logger.Error(err.Error())
+        return false, err
+    }
 
-	// Check if the ApplicationSet status indicates it is healthy
-	for _, condition := range appSet.Status.Conditions {
-		if condition.Type == "Healthy" && condition.Status == "True" {
-			return true, nil
-		}
-	}
+    // Check if the Application status indicates it is healthy and synced
+    isHealthy := app.Status.Health.Status == "Healthy"
+    isSynced := app.Status.Sync.Status == "Synced"
 
-	return false, nil
+ 
+
+    return isHealthy && isSynced, nil
 }
 
 
@@ -654,9 +655,9 @@ func ExtractDependencies(observed *v1alpha1.App) []string {
 
 
 
-func WaitForAllDependenciesHealth(
+func WaitForAllDependenciesHealthAndSyncStatus(
     logger *zap.SugaredLogger, 
-    appSetClient   applicationset.ApplicationSetServiceClient,
+    appClient application.ApplicationServiceClient,
     dependencies []string, 
     namespace string, 
     retryInterval, timeout time.Duration,
@@ -666,33 +667,33 @@ func WaitForAllDependenciesHealth(
 
     timeoutChan := time.After(timeout) // Channel that triggers after the timeout
 
-    // Map to track the health status of dependencies
+    // Map to track the health and sync status of dependencies
     dependencyStatus := make(map[string]bool)
     for _, dep := range dependencies {
-        dependencyStatus[dep] = false // Initialize all dependencies as not healthy
+        dependencyStatus[dep] = false // Initialize all dependencies as not healthy/synced
     }
 
     for {
         select {
         case <-ticker.C: // Execute every retryInterval
-            allHealthy := true
+            allHealthyAndSynced := true
             for dep := range dependencyStatus {
-                healthy, err := CheckApplicationSetHealth(logger, appSetClient, dep, namespace)
+                healthyAndSynced, err := CheckApplicationHealthAndSyncStatus(logger, appClient, dep, namespace)
                 if err != nil {
                     return err // Return if an error occurs
                 }
-                if healthy {
-                    dependencyStatus[dep] = true // Mark dependency as healthy
+                if healthyAndSynced {
+                    dependencyStatus[dep] = true // Mark dependency as healthy and synced
                 } else {
-                    allHealthy = false // Mark that not all dependencies are healthy
-                    logger.Infof("Waiting for ApplicationSet %s to become healthy...", dep)
+                    allHealthyAndSynced = false // Mark that not all dependencies are healthy and synced
+                    logger.Infof("Waiting for Application %s to become healthy and synced...", dep)
                 }
             }
-            if allHealthy {
-                return nil // All dependencies are healthy
+            if allHealthyAndSynced {
+                return nil // All dependencies are healthy and synced
             }
         case <-timeoutChan: // Execute if the timeout elapses
-            return fmt.Errorf("timed out waiting for dependencies to become healthy")
+            return fmt.Errorf("timed out waiting for dependencies to become healthy and synced")
         }
     }
 }
