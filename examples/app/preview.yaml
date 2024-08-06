@@ -21,7 +21,7 @@ spec:
       service: "preview"
       ingress:
         hosts:
-          - host: preview.localhost
+          - host: preview.guestbook
   dependencies:
     service:
       - name: web-service
