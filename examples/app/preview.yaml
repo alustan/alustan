@@ -15,13 +15,14 @@ spec:
     releaseName: basic-demo-preview
     targetRevision: main
     values:
+      nameOverride: preview-service
       image:
         repository: alustan/web-app-demo
         tag: "1.0.0"
       service: "preview"
       ingress:
         hosts:
-          - host: preview.guestbook
+          - host: preview.localhost
   dependencies:
     service:
       - name: web-service

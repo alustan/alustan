@@ -69,6 +69,7 @@ spec:
     releaseName: backend-application
     targetRevision: main
     values:
+      nameOverride: api-service
       service: backend
       cluster: "{{.CLUSTER_NAME}}"
       image: 
@@ -100,13 +101,14 @@ spec:
     releaseName: basic-demo-preview
     targetRevision: main
     values:
+      nameOverride: preview-service
       image:
         repository: horizonclient/web-app-demo
         tag: "1.0.0"
       service: "preview"
       ingress:
         hosts:
-          - host: preview.guestbook
+          - host: preview.localhost
   dependencies:
     service:
       - name: api-service
@@ -225,7 +227,7 @@ spec:
 *For private git repo: provide `gitToken` in helm values file*
 
 
-> If you wish to expose the application running on an ephemeral environment via `Ingress` the controller expects the Ingress field to be structured as specified above so as to dynamically update the host field with appropriate host url. updated url will look something like this `preview-{branch}-{pr-number}-chart-example.local`
+> If you wish to expose the application running on an ephemeral environment via `Ingress` the controller expects the Ingress field to be structured as specified above so as to dynamically update the host field with appropriate host url. updated url will look something like this `{branch}-{pr-number}-chart-example.local`
 
 *To Retrieve list of previewURls*
 

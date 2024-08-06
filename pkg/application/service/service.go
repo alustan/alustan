@@ -391,7 +391,7 @@ func CreateApplicationSet(
     // Modify Ingress hosts if preview is true
     if preview {
         logger.Info("Preview environment enabled. Modifying Ingress hosts.")
-        modifiedValues = modifyIngressHost(modifiedValues, preview, "preview-{{.branch}}-{{.number}}")
+        modifiedValues = modifyIngressHost(modifiedValues, preview, "{{.branch}}-{{.number}}")
     }
 
     // Convert modifiedValues to Helm string format
@@ -543,9 +543,6 @@ func CreateApplicationSet(
     }
 
     logger.Infof("Successfully applied ApplicationSet '%s' using ArgoCD", appSet.Name)
-
-    // Wait for a short duration before checking the application status
-    time.Sleep(30 * time.Second)
 
     // Retrieve the status of the created application
     app, err := appClient.Get(context.Background(), &application.ApplicationQuery{

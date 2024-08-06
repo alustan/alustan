@@ -32,13 +32,14 @@
 
 > kubectl get app preview-service -n default -o json | jq '.status.previewURLs'
 
-*To access codespace urls of forwarded ports*
-
-> Open the Command Palette by pressing Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac).
-
-> Type "Ports" and select `Ports: Focus on Ports View.`
-
 - Access `argocd` `web-service` and `preview-service` UI in the browser
+
+> `kubectl port-forward svc/argo-cd-argocd-server -n argocd 8080:443`
+
+> `kubectl port-forward svc/web-service -n default 3000:80`
+
+> `kubectl port-forward svc/preview-service -n default 8000:80`
+
 
 - To get argocd admin secret
 
