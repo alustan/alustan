@@ -89,13 +89,13 @@ func RunService(
     }
 
     // Proceed with creating the ApplicationSet
-    appStatus, err := CreateApplicationSet(logger, clientset, appSetClient, appClient, observed, secretName, key, latestTag)
+    conditions, err := CreateApplicationSet(logger, clientset, appSetClient, appClient, observed, secretName, key, latestTag)
     if err != nil {
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
 
-    // Ensure appStatus is not nil before dereferencing
-    if appStatus == nil {
+    // Ensure conditions is not nil before dereferencing
+    if  len(conditions) == 0 {
         status.State = "Failed"
         status.Message = "ApplicationSet creation failed"
         return status, nil
@@ -120,7 +120,7 @@ func RunService(
     finalStatus := v1alpha1.AppStatus{
         State:        "Completed",
         Message:      "Successfully applied",
-        HealthStatus: *appStatus, // Dereference the pointer here
+        HealthStatus: conditions,
         PreviewURLs:  convertedIngressURLs,
     }
 
@@ -319,7 +319,7 @@ func CreateApplicationSet(
     appClient application.ApplicationServiceClient, 
     observed *v1alpha1.App,
     secretName, key, latestTag string,
-) (*appv1alpha1.ApplicationStatus, error) { // Changed the return type to *appv1alpha1.ApplicationStatus
+) ([]appv1alpha1.ApplicationCondition, error) { 
 
     argocdNamespace := "argocd"
     secretTypeLabel := "alustan.io/secret-type"
@@ -547,20 +547,25 @@ func CreateApplicationSet(
     // Wait for a short period to allow the ApplicationSet to be processed
     time.Sleep(15 * time.Second)
 
+    var app *appv1alpha1.Application
+
     // Retrieve the status of the created application
     appNamespace := "argocd"
-    app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
-        Name:        &name,
-        AppNamespace: &appNamespace,
-    })
-    if err != nil {
-        logger.Errorf("Failed to get application status: %v", err)
-        return nil, err
-    }
+	app, err = appClient.Get(context.Background(), &application.ApplicationQuery{
+		Name:        &name,
+		AppNamespace: &appNamespace,
+	})
+	if err != nil {
+		logger.Errorf("Failed to get application: %v", err)
+		return nil, err
+	}
 
-    logger.Infof("Successfully retrieved application status for '%s'", name)
+	logger.Infof("Successfully retrieved application for '%s'", name)
 
-    return &app.Status, nil
+	// Extract all ApplicationCondition instances
+	conditions := app.Status.Conditions
+
+	return conditions, nil
 }
 
 

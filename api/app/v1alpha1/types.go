@@ -52,10 +52,12 @@ type Dependencies struct {
 type AppStatus struct {
     State    string    `json:"state"`
 	Message   string    `json:"message,omitempty"`
-    HealthStatus   appv1alpha1.ApplicationStatus     `json:"healthStatus,omitempty"`
+    HealthStatus   []appv1alpha1.ApplicationCondition    `json:"healthStatus,omitempty"`
     PreviewURLs    map[string]runtime.RawExtension     `json:"previewURLs,omitempty"`
 	ObservedGeneration int                         `json:"observedGeneration,omitempty"`
 }
+
+
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
