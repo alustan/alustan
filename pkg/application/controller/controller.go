@@ -246,11 +246,9 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
         RetryPeriod:   5 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				c.logger.Info("got leadership")
-
 				
 
-			 // Authenticate and create ArgoCD client
+				// Authenticate and create ArgoCD client
 			 password, err := getAdminPassword(c.Clientset)
 			 if err != nil {
 				 c.logger.Fatalf("Failed to get admin password: %v", err)
@@ -283,7 +281,7 @@ func (c *Controller) RunLeader(stopCh <-chan struct{}) {
 			},
 			OnNewLeader: func(identity string) {
 				if identity == id {
-					c.logger.Infof("Pod %s is still the leader", id)
+					c.logger.Infof("I am the new leader")
 				} else {
 					c.logger.Infof("New leader elected: %s", identity)
 				}
@@ -520,8 +518,8 @@ func (c *Controller) handleSyncRequest(appSetClient applicationsetpkg.Applicatio
 
 
 // Define the helper function to check if HealthStatus is empty
-func isEmptyApplicationSetStatus(status appv1alpha1.ApplicationStatus ) bool {
-    return len(status.Conditions) == 0
+func isEmptyApplicationStatus(conditions []appv1alpha1.ApplicationCondition ) bool {
+    return len(conditions) == 0
 }
  
 func mergeStatuses(baseStatus, newStatus v1alpha1.AppStatus) v1alpha1.AppStatus {
@@ -532,7 +530,7 @@ func mergeStatuses(baseStatus, newStatus v1alpha1.AppStatus) v1alpha1.AppStatus 
         baseStatus.Message = newStatus.Message
     }
     
-    if !isEmptyApplicationSetStatus(newStatus.HealthStatus) {
+    if !isEmptyApplicationStatus(newStatus.HealthStatus) {
         baseStatus.HealthStatus = newStatus.HealthStatus
     }
 

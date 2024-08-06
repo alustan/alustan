@@ -242,7 +242,7 @@ spec:
 
 > **`previewURLs`: Urls of running applications in the ephemeral environment**
 
-> **`healthStatus`: This basically holds reference to argocd application status**
+> **`healthStatus`: This basically holds reference to argocd application status condition**
 
 
 **Terraform-controller**
