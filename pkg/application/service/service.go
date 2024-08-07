@@ -785,10 +785,23 @@ func convertToRawExtensionMap(values map[string]interface{}) (map[string]runtime
         if err != nil {
             return nil, err
         }
+
+        // Wrap arrays in an object
+        if _, ok := value.([]interface{}); ok {
+            wrapped := map[string]interface{}{
+                "urls": value,
+            }
+            raw, err = json.Marshal(wrapped)
+            if err != nil {
+                return nil, err
+            }
+        }
+
         result[key] = runtime.RawExtension{Raw: raw}
     }
     return result, nil
 }
+
 
 // containsPlaceholders checks for Go template-style placeholders in the format {{.PLACEHOLDER}}
 func containsPlaceholders(values interface{}, placeholderPattern string) bool {
