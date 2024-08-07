@@ -583,10 +583,7 @@ func CreateApplicationSet(
             }
         }
 
-        if len(appConditions) == 0 {
-            logger.Errorf("Failed to find application with name: %s", name)
-            return nil, fmt.Errorf("failed to find application with name: %s", name)
-        }
+       
     }
 
     return appConditions, nil
