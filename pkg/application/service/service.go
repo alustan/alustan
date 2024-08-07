@@ -10,6 +10,7 @@ import (
     "bytes"
 	"text/template"
     "os"
+    "sort"
 	
     "gopkg.in/yaml.v2"
 	"k8s.io/client-go/dynamic"
@@ -472,7 +473,7 @@ func CreateApplicationSet(
         Namespace: namespace,
     }
     if preview {
-        templateMeta.Name = fmt.Sprintf("%s-{{.branch}}-{{.number}}", name)
+        templateMeta.Name = "preview-{{.branch}}-{{.number}}"
         templateDestination = appv1alpha1.ApplicationDestination{
             Server:    "https://kubernetes.default.svc",
             Namespace: "preview-{{.branch}}-{{.number}}",
@@ -540,25 +541,55 @@ func CreateApplicationSet(
     // Wait for a short period to allow the ApplicationSet to be processed
     time.Sleep(15 * time.Second)
 
-    var app *appv1alpha1.Application
+     // Retrieve the list of applications
+     appList, err := appClient.List(context.Background(), &application.ApplicationQuery{
+        AppNamespace: &argocdNamespace,
+    })
+    if err != nil {
+        logger.Errorf("Failed to list applications: %v", err)
+        return nil, err
+    }
 
-    // Retrieve the status of the created application
-    appNamespace := "argocd"
-	app, err = appClient.Get(context.Background(), &application.ApplicationQuery{
-		Name:        &name,
-		AppNamespace: &appNamespace,
-	})
-	if err != nil {
-		logger.Errorf("Failed to get application: %v", err)
-		return nil, err
-	}
+    var appConditions []appv1alpha1.ApplicationCondition
 
-	logger.Infof("Successfully retrieved application for '%s'", name)
+    if preview {
+        // Filter applications by naming pattern and find the most recent one
+        var matchedApps []appv1alpha1.Application
+        for _, a := range appList.Items {
+            if strings.HasPrefix(a.Name, "preview-") && strings.Contains(a.Name, "-") {
+                matchedApps = append(matchedApps, a)
+            }
+        }
 
-	// Extract all ApplicationCondition instances
-	conditions := app.Status.Conditions
+        if len(matchedApps) == 0 {
+            logger.Errorf("Failed to find applications with prefix pattern: %s", "preview-")
+            return nil, fmt.Errorf("failed to find applications with prefix pattern: %s", "preview-")
+        }
 
-	return conditions, nil
+        // Sort matched applications by creation time to find the most recent one
+        sort.Slice(matchedApps, func(i, j int) bool {
+            return matchedApps[i].CreationTimestamp.After(matchedApps[j].CreationTimestamp.Time)
+        })
+
+        // Get the most recent application
+        mostRecentApp := matchedApps[0]
+        appConditions = mostRecentApp.Status.Conditions
+    } else {
+        // For non-preview, get the application with the exact name
+        for _, a := range appList.Items {
+            if a.Name == name && a.Namespace == namespace {
+                appConditions = a.Status.Conditions
+                break
+            }
+        }
+
+        if len(appConditions) == 0 {
+            logger.Errorf("Failed to find application with name: %s", name)
+            return nil, fmt.Errorf("failed to find application with name: %s", name)
+        }
+    }
+
+    return appConditions, nil
 }
 
 
