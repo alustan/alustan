@@ -26,6 +26,8 @@
 
 - kubectl apply -f examples/app/preview.yaml
 
+> kubectl get app preview-service -n default -o json | jq '.status'
+
 > This repository `https://github.com/alustan/web-app-demo` already has an **open pullrequest** for testing purpose
 
 *Retrieve the previewURls*
@@ -38,7 +40,7 @@
 
 > `kubectl port-forward svc/web-service -n default 3000:80`
 
-> `kubectl port-forward svc/preview-service -n default 8000:80`
+> `kubectl port-forward svc/preview-service -n preview-feat-8  8000:80`
 
 
 - To get argocd admin secret
