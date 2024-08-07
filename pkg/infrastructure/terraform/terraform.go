@@ -105,11 +105,11 @@ func ExecuteTerraform(
 		}
 
 		finalStatus.State = "Completed"
-		finalStatus.Message = "Processing completed successfully"
+		finalStatus.Message = "Infrastructure successfuly provisioned"
 		finalStatus.PostDeployOutput = postDeployOutput
 	} else {
 		finalStatus.State = "Completed"
-		finalStatus.Message = "Processing completed successfully"
+		finalStatus.Message = "Infrastructure successfuly provisioned"
 	}
 
 	return finalStatus
