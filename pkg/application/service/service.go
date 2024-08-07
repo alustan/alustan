@@ -94,13 +94,6 @@ func RunService(
         return errorstatus.ErrorResponse(logger, "Running App", err), err
     }
 
-    // Ensure conditions is not nil before dereferencing
-    if  len(conditions) == 0 {
-        status.State = "Failed"
-        status.Message = "ApplicationSet creation failed"
-        return status, nil
-    }
-
     // Fetch and validate Ingress URLs
     ingressURLs, err := kubernetespkg.GetAllIngressURLs(clientset)
     if err != nil {
@@ -664,26 +657,34 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
 
 
 func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName string) (bool, error) {
+    // Log the start of the function
+    logger.Infof("Starting CheckApplicationHealthAndSyncStatus for application: %s", appName)
+
     // Retrieve the Application
     appNamespace := "argocd"
+    logger.Infof("Retrieving application %s in namespace %s", appName, appNamespace)
     app, err := appClient.Get(context.Background(), &application.ApplicationQuery{
-        Name:      &appName, 
-        AppNamespace: &appNamespace,   
-		
+        Name:        &appName,
+        AppNamespace: &appNamespace,
     })
     if err != nil {
-        logger.Error(err.Error())
+        logger.Errorf("Error retrieving application %s: %v", appName, err)
         return false, err
     }
+
+    // Log the retrieved application status
+    logger.Infof("Retrieved application %s with health status %s and sync status %s", appName, app.Status.Health.Status, app.Status.Sync.Status)
 
     // Check if the Application status indicates it is healthy and synced
     isHealthy := app.Status.Health.Status == "Healthy"
     isSynced := app.Status.Sync.Status == "Synced"
 
- 
+    // Log the health and sync status
+    logger.Infof("Application %s health status: %t, sync status: %t", appName, isHealthy, isSynced)
 
     return isHealthy && isSynced, nil
 }
+
 
 
 

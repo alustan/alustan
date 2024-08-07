@@ -167,6 +167,8 @@ spec:
 
 -  Scans your container registry every `5 mins`  and uses the latest image that satisfies the specified `semantic tag constraint`.
 
+> Supports `dockerhub` and `ghcr` registry
+
 > The default `appSyncInterval` can be changed in the controller helm values file
 
 ```yaml
@@ -314,6 +316,8 @@ spec:
 ```
 
 -  Scans your container registry every `6hrs`  and uses the latest image that satisfies the specified `semantic tag constraint`.
+
+> Supports `dockerhub` and `ghcr` registry
 
 > The default `infraSyncInterval` can be changed in the controller helm values file
 
