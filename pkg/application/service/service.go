@@ -661,27 +661,41 @@ func checkDependentServices(dynamicClient dynamic.Interface, observed *v1alpha1.
         return nil, err
     }
 
-    for _, svc := range apps.Items {
-        appSpec, ok := svc.Object["spec"].(map[string]interface{})
+    for _, app := range apps.Items {
+        spec, ok := app.Object["spec"].(map[string]interface{})
         if !ok {
             continue
         }
-        dependencies, exists := appSpec["dependencies"].(map[string]interface{})
-        if exists {
-            for depType, depList := range dependencies {
-                if depType == "service" {
-                    for _, depName := range depList.([]interface{}) {
-                        if depName == observed.ObjectMeta.Name {
-                            dependentServices = append(dependentServices, svc.GetName())
-                        }
-                    }
-                }
+
+        dependencies, ok := spec["dependencies"].(map[string]interface{})
+        if !ok {
+            continue
+        }
+
+        serviceDeps, ok := dependencies["service"].([]interface{})
+        if !ok {
+            continue
+        }
+
+        for _, dep := range serviceDeps {
+            depMap, ok := dep.(map[string]interface{})
+            if !ok {
+                continue
+            }
+            depName, ok := depMap["name"].(string)
+            if !ok {
+                continue
+            }
+
+            if depName == observed.ObjectMeta.Name {
+                dependentServices = append(dependentServices, app.GetName())
             }
         }
     }
 
     return dependentServices, nil
 }
+
 
 
 func CheckApplicationHealthAndSyncStatus(logger *zap.SugaredLogger, appClient application.ApplicationServiceClient, appName string) (bool, error) {

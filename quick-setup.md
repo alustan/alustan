@@ -34,6 +34,14 @@
 
 > kubectl get app preview-service -n default -o json | jq '.status.previewURLs'
 
+**To check dependent service functionality**
+
+- kubectl apply -f examples/app/basic-dependent.yaml
+
+> **When application is up and running try deleting web-service that it depends on**
+
+> kubectl delete -f examples/app/basic.yaml
+
 - Access `argocd` `web-service` and `preview-service` UI in the browser
 
 > `kubectl port-forward svc/argo-cd-argocd-server -n argocd 8080:443`
