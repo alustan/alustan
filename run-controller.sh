@@ -31,8 +31,6 @@ docker push "$DOCKER_USERNAME"/web-app-demo:1.0.0
 # Generate Docker config and encode it in base64
 DOCKER_CONFIG_JSON=$(cat ~/.docker/config.json | base64 -w 0)
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-
 # Create the namespace
 kubectl create ns alustan
 
